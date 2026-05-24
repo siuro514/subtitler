@@ -16,6 +16,10 @@ export const BUNDLED_FONTS_DEF: BundledFontDef[] = [
   { family: 'LXGW Xiaolai', file: 'xiaolai.woff2', label: '小賴字體（手寫）' },
   { family: 'LXGW Marker Gothic', file: 'marker.woff2', label: '霞鶩漫黑（麥克筆）' },
   { family: 'ChenYuluoyan', file: 'chenyuluoyan.woff2', label: '辰宇落雁體（手寫）' },
+  { family: 'Naikai Font', file: 'naikai.woff2', label: '內海字體（手寫）' },
+  { family: 'Jason Handwriting 1', file: 'jason1.woff2', label: '清松手寫體 1（手寫）' },
+  { family: 'Bakudai Font', file: 'bakudai.woff2', label: '莫大毛筆字體（毛筆）' },
+  { family: 'CEF Fonts CJK', file: 'cef.woff2', label: '快去寫作業 CJK（手寫）' },
 ]
 
 export const BUNDLED_FONTS: FontOption[] = BUNDLED_FONTS_DEF.map((f) => ({

@@ -30,6 +30,26 @@ OFL-1.1 全文：https://scripts.sil.org/cms/scripts/page.php?item_id=OFL_web
 - 原始下載：https://github.com/Chenyu-otf/chenyuluoyan_thin
 - 授權：OFL-1.1
 
+### 內海字體 (Naikai Font) — `naikai.woff2`
+- 作者：max32002（衍生自瀨戶字體 setofont，作者 twinklem_seto）
+- 原始下載：https://github.com/max32002/naikaifont
+- 授權：OFL-1.1
+
+### 清松手寫體 1 (JasonHandwriting) — `jason1.woff2`
+- 作者：Jason (Yu Ching Sung)
+- 原始下載：https://github.com/jasonhandwriting/JasonHandwriting
+- 授權：OFL-1.1
+
+### 莫大毛筆字體 (Bakudai Font) — `bakudai.woff2`
+- 作者：max32002（衍生自青柳衡山書道家的「衡山毛筆フォント」）
+- 原始下載：https://github.com/max32002/bakudaifont
+- 授權：OFL-1.1
+
+### 快去寫作業 CJK (CEF Fonts CJK) — `cef.woff2`
+- 作者：Partyb0ssishere
+- 原始下載：https://github.com/Partyb0ssishere/cef-fonts-cjk
+- 授權：OFL-1.1
+
 ---
 
 依 OFL-1.1，本目錄之字型可自由使用、嵌入、再散佈與改作，但須保留本授權聲明檔。
