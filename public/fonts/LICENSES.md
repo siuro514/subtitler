@@ -35,7 +35,7 @@ OFL-1.1 全文：https://scripts.sil.org/cms/scripts/page.php?item_id=OFL_web
 - 原始下載：https://github.com/max32002/naikaifont
 - 授權：OFL-1.1
 
-### 清松手寫體 1 (JasonHandwriting) — `jason1.woff2`
+### 清松手寫體 全套 (JasonHandwriting 1-9 / 3p / 5p-9p) — `jason{1..9,3p,5p,6p,7p,8p,9p}.woff2`
 - 作者：Jason (Yu Ching Sung)
 - 原始下載：https://github.com/jasonhandwriting/JasonHandwriting
 - 授權：OFL-1.1
