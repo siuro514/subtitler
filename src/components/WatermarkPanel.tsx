@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { Upload, X } from 'lucide-react'
+import { Disc3, Square, Circle as CircleIcon, Upload, X } from 'lucide-react'
 import { useEditor } from '@/store/editor'
 import type { Watermark } from '@/types'
 import { Field, Section } from './ui/Field'
@@ -49,6 +49,67 @@ export function WatermarkPanel() {
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
+
+          <Field label="形狀">
+            <div className="grid grid-cols-2 gap-1">
+              <button
+                className={
+                  'flex items-center justify-center gap-1 rounded-md border px-2 py-1 text-xs ' +
+                  (watermark.shape === 'rect' && !watermark.vinyl
+                    ? 'border-zinc-300 bg-zinc-800'
+                    : 'border-border text-zinc-400 hover:bg-zinc-900')
+                }
+                onClick={() => setWatermark({ shape: 'rect', vinyl: false })}
+              >
+                <Square className="h-3.5 w-3.5" /> 方
+              </button>
+              <button
+                className={
+                  'flex items-center justify-center gap-1 rounded-md border px-2 py-1 text-xs ' +
+                  (watermark.shape === 'circle' && !watermark.vinyl
+                    ? 'border-zinc-300 bg-zinc-800'
+                    : 'border-border text-zinc-400 hover:bg-zinc-900')
+                }
+                onClick={() => setWatermark({ shape: 'circle', vinyl: false })}
+              >
+                <CircleIcon className="h-3.5 w-3.5" /> 圓
+              </button>
+            </div>
+          </Field>
+
+          <label className="flex items-center justify-between rounded-md border border-border p-2 text-xs">
+            <span className="flex items-center gap-2">
+              <Disc3 className="h-3.5 w-3.5" /> 黑膠唱片外圈
+            </span>
+            <input
+              type="checkbox"
+              checked={watermark.vinyl}
+              onChange={(e) => setWatermark({ vinyl: e.target.checked, shape: e.target.checked ? 'circle' : watermark.shape })}
+            />
+          </label>
+
+          <Field label={watermark.rotateRpm === 0 ? '旋轉（關閉）' : `旋轉 ${watermark.rotateRpm} rpm`}>
+            <input
+              type="range"
+              min={0}
+              max={60}
+              step={1}
+              className="w-full accent-zinc-300"
+              value={watermark.rotateRpm}
+              onChange={(e) => setWatermark({ rotateRpm: parseInt(e.target.value, 10) })}
+            />
+            <div className="mt-1 flex gap-1">
+              {[0, 16, 33, 45].map((rpm) => (
+                <button
+                  key={rpm}
+                  className="rounded border border-border px-1.5 py-0.5 text-[10px] text-zinc-500 hover:bg-zinc-800"
+                  onClick={() => setWatermark({ rotateRpm: rpm })}
+                >
+                  {rpm === 0 ? '停' : `${rpm}`}
+                </button>
+              ))}
+            </div>
+          </Field>
 
           <Field label={`尺寸 ${Math.round(watermark.width * 100)}% (相對影片寬)`}>
             <input

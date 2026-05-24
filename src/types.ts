@@ -44,6 +44,9 @@ export interface Watermark {
   opacity: number
   marginX: number
   marginY: number
+  shape: 'rect' | 'circle'
+  vinyl: boolean
+  rotateRpm: number
 }
 
 export interface VideoMeta {
@@ -97,4 +100,7 @@ export const DEFAULT_WATERMARK: Watermark = {
   opacity: 0.85,
   marginX: 0.03,
   marginY: 0.03,
+  shape: 'rect',
+  vinyl: false,
+  rotateRpm: 0,
 }

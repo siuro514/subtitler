@@ -179,35 +179,126 @@ export function drawSubtitle(ctx: Ctx, input: RenderInputs) {
 }
 
 export function drawWatermark(ctx: Ctx, input: RenderInputs) {
-  const { watermark, watermarkImage, width, height } = input
+  const { watermark, watermarkImage, width, height, time } = input
   if (!watermark.imageDataUrl || !watermarkImage) return
   const imgW = 'width' in watermarkImage ? watermarkImage.width : 0
   const imgH = 'height' in watermarkImage ? watermarkImage.height : 0
   if (!imgW || !imgH) return
 
-  const targetW = width * watermark.width
-  const targetH = (imgH / imgW) * targetW
+  const isCircle = watermark.shape === 'circle' || watermark.vinyl
+  const userSize = width * watermark.width
+  let totalW: number, totalH: number
+  if (isCircle) {
+    totalW = totalH = userSize
+  } else {
+    totalW = userSize
+    totalH = (imgH / imgW) * userSize
+  }
+
   const mx = width * watermark.marginX
   const my = height * watermark.marginY
-
-  let x = 0
-  let y = 0
+  let bx = 0
+  let by = 0
   switch (watermark.position) {
-    case 'top-left': x = mx; y = my; break
-    case 'top': x = (width - targetW) / 2; y = my; break
-    case 'top-right': x = width - targetW - mx; y = my; break
-    case 'left': x = mx; y = (height - targetH) / 2; break
-    case 'center': x = (width - targetW) / 2; y = (height - targetH) / 2; break
-    case 'right': x = width - targetW - mx; y = (height - targetH) / 2; break
-    case 'bottom-left': x = mx; y = height - targetH - my; break
-    case 'bottom': x = (width - targetW) / 2; y = height - targetH - my; break
-    case 'bottom-right': x = width - targetW - mx; y = height - targetH - my; break
+    case 'top-left': bx = mx; by = my; break
+    case 'top': bx = (width - totalW) / 2; by = my; break
+    case 'top-right': bx = width - totalW - mx; by = my; break
+    case 'left': bx = mx; by = (height - totalH) / 2; break
+    case 'center': bx = (width - totalW) / 2; by = (height - totalH) / 2; break
+    case 'right': bx = width - totalW - mx; by = (height - totalH) / 2; break
+    case 'bottom-left': bx = mx; by = height - totalH - my; break
+    case 'bottom': bx = (width - totalW) / 2; by = height - totalH - my; break
+    case 'bottom-right': bx = width - totalW - mx; by = height - totalH - my; break
   }
+
+  const cx = bx + totalW / 2
+  const cy = by + totalH / 2
 
   ctx.save()
   ctx.globalAlpha = watermark.opacity
-  ctx.drawImage(watermarkImage as CanvasImageSource, x, y, targetW, targetH)
+
+  if (watermark.rotateRpm > 0) {
+    const angle = (time * watermark.rotateRpm / 60) * Math.PI * 2
+    ctx.translate(cx, cy)
+    ctx.rotate(angle)
+    ctx.translate(-cx, -cy)
+  }
+
+  if (watermark.vinyl) {
+    drawVinyl(ctx, watermarkImage as CanvasImageSource, imgW, imgH, cx, cy, totalW / 2)
+  } else if (isCircle) {
+    drawCircleImage(ctx, watermarkImage as CanvasImageSource, imgW, imgH, cx, cy, totalW / 2)
+  } else {
+    ctx.drawImage(watermarkImage as CanvasImageSource, bx, by, totalW, totalH)
+  }
+
   ctx.restore()
+}
+
+function drawCircleImage(
+  ctx: Ctx,
+  img: CanvasImageSource,
+  imgW: number,
+  imgH: number,
+  cx: number,
+  cy: number,
+  r: number,
+) {
+  ctx.save()
+  ctx.beginPath()
+  ctx.arc(cx, cy, r, 0, Math.PI * 2)
+  ctx.clip()
+  const aspect = imgW / imgH
+  let drawW: number, drawH: number
+  if (aspect > 1) {
+    drawH = r * 2
+    drawW = drawH * aspect
+  } else {
+    drawW = r * 2
+    drawH = drawW / aspect
+  }
+  ctx.drawImage(img, cx - drawW / 2, cy - drawH / 2, drawW, drawH)
+  ctx.restore()
+}
+
+function drawVinyl(
+  ctx: Ctx,
+  img: CanvasImageSource,
+  imgW: number,
+  imgH: number,
+  cx: number,
+  cy: number,
+  outerR: number,
+) {
+  const labelR = outerR * 0.4
+
+  ctx.fillStyle = '#0a0a0a'
+  ctx.beginPath()
+  ctx.arc(cx, cy, outerR, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)'
+  ctx.lineWidth = Math.max(0.5, outerR * 0.005)
+  const grooveCount = 14
+  for (let i = 1; i <= grooveCount; i++) {
+    const r = labelR + (outerR - labelR) * (i / (grooveCount + 1))
+    ctx.beginPath()
+    ctx.arc(cx, cy, r, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)'
+  ctx.lineWidth = Math.max(1, outerR * 0.02)
+  ctx.beginPath()
+  ctx.arc(cx, cy, outerR * 0.88, Math.PI * 1.15, Math.PI * 1.45)
+  ctx.stroke()
+
+  drawCircleImage(ctx, img, imgW, imgH, cx, cy, labelR)
+
+  ctx.fillStyle = '#000'
+  ctx.beginPath()
+  ctx.arc(cx, cy, outerR * 0.02, 0, Math.PI * 2)
+  ctx.fill()
 }
 
 export function renderFrame(ctx: Ctx, input: RenderInputs, clear = true) {
