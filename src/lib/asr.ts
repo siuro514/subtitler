@@ -86,6 +86,35 @@ export interface AlignmentResult {
   subtitles: Subtitle[]
   matched: number
   spreadCount: number
+  normalizedChunks: { start: number; end: number; text: string }[]
+}
+
+function normalizeChunks(chunks: ASRChunk[], totalDuration: number) {
+  const out: { start: number; end: number; text: string }[] = []
+  let prevEnd = 0
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i]
+    const rawStart = c.timestamp[0]
+    const rawEnd = c.timestamp[1]
+    let start = typeof rawStart === 'number' ? rawStart : prevEnd
+    if (typeof rawEnd === 'number') {
+      out.push({ start, end: rawEnd, text: c.text.trim() })
+      prevEnd = rawEnd
+      continue
+    }
+    let nextStart: number | null = null
+    for (let j = i + 1; j < chunks.length; j++) {
+      const ns = chunks[j].timestamp[0]
+      if (typeof ns === 'number') {
+        nextStart = ns
+        break
+      }
+    }
+    const end = nextStart ?? totalDuration
+    out.push({ start, end, text: c.text.trim() })
+    prevEnd = end
+  }
+  return out.filter((c) => c.text.length > 0)
 }
 
 export function alignLyricsToChunks(
@@ -93,9 +122,12 @@ export function alignLyricsToChunks(
   chunks: ASRChunk[],
   totalDuration: number,
 ): AlignmentResult {
-  if (lyrics.length === 0) return { subtitles: [], matched: 0, spreadCount: 0 }
+  if (lyrics.length === 0)
+    return { subtitles: [], matched: 0, spreadCount: 0, normalizedChunks: [] }
 
-  if (chunks.length === 0) {
+  const normalized = normalizeChunks(chunks, totalDuration)
+
+  if (normalized.length === 0) {
     const per = totalDuration / lyrics.length
     const subtitles = lyrics.map((text, i) => ({
       id: uid(),
@@ -103,19 +135,19 @@ export function alignLyricsToChunks(
       end: per * (i + 1),
       text,
     }))
-    return { subtitles, matched: 0, spreadCount: lyrics.length }
+    return { subtitles, matched: 0, spreadCount: lyrics.length, normalizedChunks: normalized }
   }
 
-  const matched = Math.min(lyrics.length, chunks.length)
+  const matched = Math.min(lyrics.length, normalized.length)
   const subtitles: Subtitle[] = []
 
   for (let i = 0; i < matched; i++) {
-    const [start, end] = chunks[i].timestamp
-    const nextStart = chunks[i + 1]?.timestamp[0] ?? totalDuration
+    const { start, end } = normalized[i]
+    const nextStart = normalized[i + 1]?.start ?? totalDuration
     subtitles.push({
       id: uid(),
-      start: start ?? 0,
-      end: end ?? nextStart,
+      start,
+      end: Math.max(start + 0.1, end || nextStart),
       text: lyrics[i],
     })
   }
@@ -135,5 +167,5 @@ export function alignLyricsToChunks(
     }
   }
 
-  return { subtitles, matched, spreadCount: remaining.length }
+  return { subtitles, matched, spreadCount: remaining.length, normalizedChunks: normalized }
 }

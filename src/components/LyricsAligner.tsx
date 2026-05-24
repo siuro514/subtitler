@@ -75,7 +75,7 @@ export function LyricsAligner() {
       setStage('align')
       setProgress(0.95)
       const totalDuration = videoMeta?.duration ?? pcm.length / 16000
-      const { subtitles, matched, spreadCount } = alignLyricsToChunks(
+      const { subtitles, matched, spreadCount, normalizedChunks } = alignLyricsToChunks(
         lyricLines,
         chunks,
         totalDuration,
@@ -85,15 +85,30 @@ export function LyricsAligner() {
       setStage('done')
       setProgress(1)
       const parts: string[] = []
-      parts.push(`Whisper 偵測到 ${chunks.length} 段語音；歌詞 ${lyricLines.length} 行`)
-      if (matched > 0) parts.push(`前 ${matched} 行 1:1 對映到語音段`)
+      parts.push(
+        `Whisper 偵測到 ${chunks.length} 段語音（過濾空白後 ${normalizedChunks.length} 段）；歌詞 ${lyricLines.length} 行`,
+      )
+      if (matched > 0) parts.push(`前 ${matched} 行依 Whisper 時間軸 1:1 對映`)
       if (spreadCount > 0) {
         parts.push(
           `剩下 ${spreadCount} 行平均分配到「最後語音段結束 → 影片結束」`,
         )
       }
-      if (chunks.length > lyricLines.length) {
-        parts.push(`Whisper 多偵測的 ${chunks.length - lyricLines.length} 段已忽略`)
+      if (normalizedChunks.length > lyricLines.length) {
+        parts.push(
+          `Whisper 多偵測的 ${normalizedChunks.length - lyricLines.length} 段已忽略`,
+        )
+      }
+      if (normalizedChunks.length > 0) {
+        parts.push('\nWhisper 原始時間軸（可比對是否正確）：')
+        const lines = normalizedChunks.slice(0, 20).map((c, i) => {
+          const start = c.start.toFixed(2).padStart(6)
+          const end = c.end.toFixed(2).padStart(6)
+          const t = c.text.length > 24 ? c.text.slice(0, 24) + '…' : c.text
+          return `${String(i + 1).padStart(2)}. ${start}s–${end}s  ${t}`
+        })
+        parts.push(lines.join('\n'))
+        if (normalizedChunks.length > 20) parts.push(`…（共 ${normalizedChunks.length} 段）`)
       }
       setInfo(parts.join('\n'))
     } catch (e) {
