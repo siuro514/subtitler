@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
-import { Trash2, Upload } from 'lucide-react'
+import { Bold, Italic, Strikethrough, Trash2, Underline, Upload } from 'lucide-react'
 import { useEditor } from '@/store/editor'
 import { Field, Section } from './ui/Field'
 import { BUNDLED_FONTS, SYSTEM_FONTS, WEB_FONTS } from '@/lib/fonts'
+import { cn } from '@/lib/utils'
 
 const POSITIONS = [
   { label: '上', value: 'top' },
@@ -131,6 +132,32 @@ export function SubtitleStylePanel() {
           )}
         </div>
         {fontError && <p className="mt-1 text-[10px] text-red-400">{fontError}</p>}
+      </Field>
+
+      <Field label="字體樣式">
+        <div className="grid grid-cols-4 gap-1">
+          {([
+            { key: 'bold', icon: Bold, label: '粗體' },
+            { key: 'italic', icon: Italic, label: '斜體' },
+            { key: 'underline', icon: Underline, label: '底線' },
+            { key: 'strikethrough', icon: Strikethrough, label: '刪除線' },
+          ] as const).map(({ key, icon: Icon, label }) => (
+            <button
+              key={key}
+              aria-label={label}
+              title={label}
+              onClick={() => setStyle({ [key]: !style[key] } as Partial<typeof style>)}
+              className={cn(
+                'flex h-8 items-center justify-center rounded-md border text-xs',
+                style[key]
+                  ? 'border-zinc-300 bg-zinc-700 text-zinc-100'
+                  : 'border-border text-zinc-400 hover:bg-zinc-900',
+              )}
+            >
+              <Icon className="h-4 w-4" />
+            </button>
+          ))}
+        </div>
       </Field>
 
       <Field label={`字級 ${style.fontSize}`}>

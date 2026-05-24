@@ -18,6 +18,10 @@ export interface SubtitleStyle {
   backgroundOpacity: number
   position: SubtitlePosition
   customY: number
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  strikethrough: boolean
 }
 
 export interface Watermark {
@@ -73,6 +77,10 @@ export const DEFAULT_STYLE: SubtitleStyle = {
   backgroundOpacity: 0.5,
   position: 'bottom',
   customY: 0.85,
+  bold: true,
+  italic: false,
+  underline: false,
+  strikethrough: false,
 }
 
 export const DEFAULT_WATERMARK: Watermark = {

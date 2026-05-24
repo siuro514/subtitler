@@ -72,7 +72,9 @@ export function drawSubtitle(ctx: Ctx, input: RenderInputs) {
   const scale = Math.min(width, height) / 720
   const fontSize = style.fontSize * scale
   ctx.save()
-  ctx.font = `bold ${fontSize}px ${style.fontFamily}`
+  const fontStyle = style.italic ? 'italic' : 'normal'
+  const fontWeight = style.bold ? 'bold' : 'normal'
+  ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${style.fontFamily}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
 
@@ -94,6 +96,7 @@ export function drawSubtitle(ctx: Ctx, input: RenderInputs) {
   }
 
   const strokeW = style.strokeWidth * scale
+  const decoThickness = Math.max(1, fontSize * 0.06)
   for (let i = 0; i < lines.length; i++) {
     const ly = cy - blockH / 2 + lineHeight * (i + 0.5)
     if (strokeW > 0) {
@@ -105,6 +108,30 @@ export function drawSubtitle(ctx: Ctx, input: RenderInputs) {
     }
     ctx.fillStyle = style.color
     ctx.fillText(lines[i], x, ly)
+
+    if (style.underline || style.strikethrough) {
+      const lineWidth = ctx.measureText(lines[i]).width
+      const left = x - lineWidth / 2
+      const right = x + lineWidth / 2
+      ctx.save()
+      ctx.lineWidth = decoThickness
+      ctx.strokeStyle = style.color
+      ctx.lineCap = 'butt'
+      if (style.strikethrough) {
+        ctx.beginPath()
+        ctx.moveTo(left, ly)
+        ctx.lineTo(right, ly)
+        ctx.stroke()
+      }
+      if (style.underline) {
+        const uy = ly + fontSize * 0.42
+        ctx.beginPath()
+        ctx.moveTo(left, uy)
+        ctx.lineTo(right, uy)
+        ctx.stroke()
+      }
+      ctx.restore()
+    }
   }
   ctx.restore()
 }
