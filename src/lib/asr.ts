@@ -82,45 +82,58 @@ export async function runASR(
   return result.chunks ?? []
 }
 
+export interface AlignmentResult {
+  subtitles: Subtitle[]
+  matched: number
+  spreadCount: number
+}
+
 export function alignLyricsToChunks(
   lyrics: string[],
   chunks: ASRChunk[],
   totalDuration: number,
-): Subtitle[] {
-  if (lyrics.length === 0) return []
+): AlignmentResult {
+  if (lyrics.length === 0) return { subtitles: [], matched: 0, spreadCount: 0 }
+
   if (chunks.length === 0) {
     const per = totalDuration / lyrics.length
-    return lyrics.map((text, i) => ({
+    const subtitles = lyrics.map((text, i) => ({
       id: uid(),
       start: per * i,
       end: per * (i + 1),
       text,
     }))
+    return { subtitles, matched: 0, spreadCount: lyrics.length }
   }
 
-  if (lyrics.length === chunks.length) {
-    return lyrics.map((text, i) => {
-      const [start, end] = chunks[i].timestamp
-      return {
-        id: uid(),
-        start: start ?? 0,
-        end: end ?? (chunks[i + 1]?.timestamp[0] ?? totalDuration),
-        text,
-      }
+  const matched = Math.min(lyrics.length, chunks.length)
+  const subtitles: Subtitle[] = []
+
+  for (let i = 0; i < matched; i++) {
+    const [start, end] = chunks[i].timestamp
+    const nextStart = chunks[i + 1]?.timestamp[0] ?? totalDuration
+    subtitles.push({
+      id: uid(),
+      start: start ?? 0,
+      end: end ?? nextStart,
+      text: lyrics[i],
     })
   }
 
-  const firstStart = chunks[0].timestamp[0] ?? 0
-  const lastEnd =
-    chunks[chunks.length - 1].timestamp[1] ??
-    chunks[chunks.length - 1].timestamp[0] ??
-    totalDuration
-  const span = Math.max(0.1, lastEnd - firstStart)
-  const per = span / lyrics.length
-  return lyrics.map((text, i) => ({
-    id: uid(),
-    start: firstStart + per * i,
-    end: firstStart + per * (i + 1),
-    text,
-  }))
+  const remaining = lyrics.slice(matched)
+  if (remaining.length > 0) {
+    const lastEnd = subtitles[matched - 1]?.end ?? 0
+    const span = Math.max(0.1, totalDuration - lastEnd)
+    const per = span / remaining.length
+    for (let i = 0; i < remaining.length; i++) {
+      subtitles.push({
+        id: uid(),
+        start: lastEnd + per * i,
+        end: lastEnd + per * (i + 1),
+        text: remaining[i],
+      })
+    }
+  }
+
+  return { subtitles, matched, spreadCount: remaining.length }
 }

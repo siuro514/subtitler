@@ -75,15 +75,27 @@ export function LyricsAligner() {
       setStage('align')
       setProgress(0.95)
       const totalDuration = videoMeta?.duration ?? pcm.length / 16000
-      const subs = alignLyricsToChunks(lyricLines, chunks, totalDuration)
-      setSubtitles(subs)
+      const { subtitles, matched, spreadCount } = alignLyricsToChunks(
+        lyricLines,
+        chunks,
+        totalDuration,
+      )
+      setSubtitles(subtitles)
 
       setStage('done')
       setProgress(1)
-      setInfo(
-        `Whisper 偵測到 ${chunks.length} 段語音；歌詞 ${lyricLines.length} 行。\n` +
-          `${lyricLines.length === chunks.length ? '行數一致 → 直接對映每段時間' : '行數不一致 → 將歌詞平均分配到語音範圍'}`,
-      )
+      const parts: string[] = []
+      parts.push(`Whisper 偵測到 ${chunks.length} 段語音；歌詞 ${lyricLines.length} 行`)
+      if (matched > 0) parts.push(`前 ${matched} 行 1:1 對映到語音段`)
+      if (spreadCount > 0) {
+        parts.push(
+          `剩下 ${spreadCount} 行平均分配到「最後語音段結束 → 影片結束」`,
+        )
+      }
+      if (chunks.length > lyricLines.length) {
+        parts.push(`Whisper 多偵測的 ${chunks.length - lyricLines.length} 段已忽略`)
+      }
+      setInfo(parts.join('\n'))
     } catch (e) {
       if (ac.signal.aborted) return
       setError(e instanceof Error ? e.message : String(e))
