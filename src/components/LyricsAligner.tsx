@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Sparkles, X } from 'lucide-react'
 import { useEditor } from '@/store/editor'
 import { extractPcm16kMono } from '@/lib/audio'
+import { alignLyricsToChunks, runASR } from '@/lib/asr'
 import { Field, Section } from './ui/Field'
 
 type Stage = 'extract' | 'load-model' | 'asr' | 'align' | 'done'
@@ -14,9 +15,19 @@ const STAGE_LABEL: Record<Stage, string> = {
   done: '完成',
 }
 
+const LANGS = [
+  { value: 'zh', label: '中文' },
+  { value: 'en', label: 'English' },
+  { value: 'ja', label: '日本語' },
+  { value: 'ko', label: '한국어' },
+]
+
 export function LyricsAligner() {
   const videoBlob = useEditor((s) => s.videoBlob)
+  const videoMeta = useEditor((s) => s.videoMeta)
+  const setSubtitles = useEditor((s) => s.setSubtitles)
   const [lyrics, setLyrics] = useState('')
+  const [lang, setLang] = useState('zh')
   const [open, setOpen] = useState(false)
   const [stage, setStage] = useState<Stage>('extract')
   const [progress, setProgress] = useState(0)
@@ -41,16 +52,38 @@ export function LyricsAligner() {
     try {
       const pcm = await extractPcm16kMono(videoBlob, {
         signal: ac.signal,
-        onProgress: (p) => setProgress(p * 0.3),
+        onProgress: (p) => setProgress(p * 0.2),
       })
       if (ac.signal.aborted) return
+
       setStage('load-model')
-      setProgress(0.3)
-      setInfo(
-        `已抽出 ${pcm.length.toLocaleString()} 取樣（16kHz）≈ ${(pcm.length / 16000).toFixed(1)} 秒\n歌詞行數：${lyricLines.length}\n\nPhase 2 (Whisper) 還沒接，目前到此停止。`,
-      )
+      const chunks = await runASR(pcm, {
+        language: lang,
+        signal: ac.signal,
+        onStage: (s) => {
+          if (s.kind === 'loading-model') {
+            setStage('load-model')
+            setProgress(0.2 + s.progress * 0.3)
+          } else if (s.kind === 'transcribing') {
+            setStage('asr')
+            setProgress(0.5 + s.progress * 0.4)
+          }
+        },
+      })
+      if (ac.signal.aborted) return
+
+      setStage('align')
+      setProgress(0.95)
+      const totalDuration = videoMeta?.duration ?? pcm.length / 16000
+      const subs = alignLyricsToChunks(lyricLines, chunks, totalDuration)
+      setSubtitles(subs)
+
       setStage('done')
       setProgress(1)
+      setInfo(
+        `Whisper 偵測到 ${chunks.length} 段語音；歌詞 ${lyricLines.length} 行。\n` +
+          `${lyricLines.length === chunks.length ? '行數一致 → 直接對映每段時間' : '行數不一致 → 將歌詞平均分配到語音範圍'}`,
+      )
     } catch (e) {
       if (ac.signal.aborted) return
       setError(e instanceof Error ? e.message : String(e))
@@ -66,6 +99,17 @@ export function LyricsAligner() {
 
   return (
     <Section title="用 AI 對齊歌詞">
+      <Field label="語言">
+        <select
+          className="w-full rounded-md border border-border bg-zinc-900 px-2 py-1.5 text-sm"
+          value={lang}
+          onChange={(e) => setLang(e.target.value)}
+        >
+          {LANGS.map((l) => (
+            <option key={l.value} value={l.value}>{l.label}</option>
+          ))}
+        </select>
+      </Field>
       <Field label="歌詞（每行一句）">
         <textarea
           className="min-h-32 w-full rounded-md border border-border bg-zinc-900 px-2 py-1.5 font-mono text-xs"
