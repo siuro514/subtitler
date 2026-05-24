@@ -1,8 +1,28 @@
 export interface FontOption {
   family: string
   label: string
-  group: 'system' | 'web' | 'custom'
+  group: 'system' | 'bundled' | 'web' | 'custom'
 }
+
+interface BundledFontDef {
+  family: string
+  file: string
+  label: string
+}
+
+export const BUNDLED_FONTS_DEF: BundledFontDef[] = [
+  { family: 'LXGW ZhenKai', file: 'lxgw-zhenkai.woff2', label: '霞鶩臻楷（楷）' },
+  { family: 'LXGW Yozai', file: 'yozai.woff2', label: '悠哉字體（手寫）' },
+  { family: 'LXGW Xiaolai', file: 'xiaolai.woff2', label: '小賴字體（手寫）' },
+  { family: 'LXGW Marker Gothic', file: 'marker.woff2', label: '霞鶩漫黑（麥克筆）' },
+  { family: 'ChenYuluoyan', file: 'chenyuluoyan.woff2', label: '辰宇落雁體（手寫）' },
+]
+
+export const BUNDLED_FONTS: FontOption[] = BUNDLED_FONTS_DEF.map((f) => ({
+  family: `"${f.family}", sans-serif`,
+  label: f.label,
+  group: 'bundled',
+}))
 
 export const SYSTEM_FONTS: FontOption[] = [
   { family: 'sans-serif', label: '系統 sans-serif', group: 'system' },
@@ -48,6 +68,25 @@ const GOOGLE_FONTS_URL =
   '&family=Noto+Serif+TC:wght@400;700' +
   '&family=Zen+Maru+Gothic:wght@400;700' +
   '&display=swap'
+
+export function injectBundledFonts() {
+  if (document.querySelector('style[data-bundled-fonts]')) return
+  const base = import.meta.env.BASE_URL || '/'
+  const css = BUNDLED_FONTS_DEF.map(
+    (f) =>
+      `@font-face {
+  font-family: "${f.family}";
+  src: url("${base}fonts/${f.file}") format("woff2");
+  font-display: swap;
+  font-weight: 400;
+  font-style: normal;
+}`,
+  ).join('\n')
+  const style = document.createElement('style')
+  style.setAttribute('data-bundled-fonts', '')
+  style.textContent = css
+  document.head.appendChild(style)
+}
 
 export function injectGoogleFonts() {
   if (document.querySelector('link[data-google-fonts]')) return

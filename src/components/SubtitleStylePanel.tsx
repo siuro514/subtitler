@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Trash2, Upload } from 'lucide-react'
 import { useEditor } from '@/store/editor'
 import { Field, Section } from './ui/Field'
-import { SYSTEM_FONTS, WEB_FONTS } from '@/lib/fonts'
+import { BUNDLED_FONTS, SYSTEM_FONTS, WEB_FONTS } from '@/lib/fonts'
 
 const POSITIONS = [
   { label: '上', value: 'top' },
@@ -59,6 +59,13 @@ export function SubtitleStylePanel() {
         >
           <optgroup label="系統字型">
             {SYSTEM_FONTS.map((f) => (
+              <option key={f.label} value={f.family}>
+                {f.label}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="內建中文字型（OFL）">
+            {BUNDLED_FONTS.map((f) => (
               <option key={f.label} value={f.family}>
                 {f.label}
               </option>

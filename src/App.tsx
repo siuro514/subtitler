@@ -9,8 +9,9 @@ import { Timeline } from './components/Timeline/Timeline'
 import { ExportButton } from './components/ExportButton'
 import { DEMO_WATERMARK_DATA_URL, makeDemoSubtitles } from './lib/demo'
 import { clearSnapshot, loadSnapshot, onSaveStatus, startAutosave } from './store/persistence'
-import { injectGoogleFonts } from './lib/fonts'
+import { injectBundledFonts, injectGoogleFonts } from './lib/fonts'
 
+injectBundledFonts()
 injectGoogleFonts()
 
 export function App() {
