@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import {
   DEFAULT_STYLE,
   DEFAULT_WATERMARK,
+  type CustomFont,
   type ProjectSnapshot,
   type Subtitle,
   type SubtitleStyle,
@@ -10,6 +11,7 @@ import {
   type Watermark,
 } from '@/types'
 import { clamp, uid } from '@/lib/utils'
+import { registerCustomFont } from '@/lib/fonts'
 
 interface EditorState {
   videoBlob: Blob | null
@@ -23,6 +25,7 @@ interface EditorState {
   watermark: Watermark
   exportProgress: number | null
   hasUnsupportedBrowser: boolean
+  customFonts: CustomFont[]
 
   setVideo: (blob: Blob, meta: VideoMeta) => void
   clearVideo: () => void
@@ -36,7 +39,9 @@ interface EditorState {
   setStyle: (patch: Partial<SubtitleStyle>) => void
   setWatermark: (patch: Partial<Watermark>) => void
   setExportProgress: (p: number | null) => void
-  hydrate: (snap: ProjectSnapshot) => void
+  addCustomFont: (family: string, data: ArrayBuffer) => Promise<void>
+  removeCustomFont: (id: string) => void
+  hydrate: (snap: ProjectSnapshot) => Promise<void>
   toSnapshot: () => ProjectSnapshot
 }
 
@@ -54,6 +59,7 @@ export const useEditor = create<EditorState>()(
     exportProgress: null,
     hasUnsupportedBrowser:
       typeof window !== 'undefined' && !('VideoEncoder' in window),
+    customFonts: [],
 
     setVideo: (blob, meta) => {
       const prev = get().videoUrl
@@ -117,7 +123,18 @@ export const useEditor = create<EditorState>()(
 
     setExportProgress: (p) => set({ exportProgress: p }),
 
-    hydrate: (snap) => {
+    addCustomFont: async (family, data) => {
+      const buf = data.slice(0)
+      await registerCustomFont(family, buf)
+      const font: CustomFont = { id: uid(), family, data }
+      set((s) => ({ customFonts: [...s.customFonts, font] }))
+    },
+
+    removeCustomFont: (id) => {
+      set((s) => ({ customFonts: s.customFonts.filter((f) => f.id !== id) }))
+    },
+
+    hydrate: async (snap) => {
       if (snap.videoBlob && snap.videoMeta) {
         const url = URL.createObjectURL(snap.videoBlob)
         set({
@@ -126,10 +143,15 @@ export const useEditor = create<EditorState>()(
           videoUrl: url,
         })
       }
+      const fonts = snap.customFonts ?? []
+      await Promise.allSettled(
+        fonts.map((f) => registerCustomFont(f.family, f.data.slice(0))),
+      )
       set({
         subtitles: snap.subtitles ?? [],
         style: { ...DEFAULT_STYLE, ...snap.style },
         watermark: { ...DEFAULT_WATERMARK, ...snap.watermark },
+        customFonts: fonts,
       })
     },
 
@@ -141,6 +163,7 @@ export const useEditor = create<EditorState>()(
         subtitles: s.subtitles,
         style: s.style,
         watermark: s.watermark,
+        customFonts: s.customFonts,
       }
     },
   })),

@@ -1,6 +1,7 @@
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer'
 import { demuxMp4 } from './demux'
 import { loadWatermarkImage, renderFrame } from './render'
+import { ensureFontLoaded } from './fonts'
 import type { Subtitle, SubtitleStyle, Watermark } from '@/types'
 
 export interface ExportOptions {
@@ -70,6 +71,10 @@ export async function exportVideo(opts: ExportOptions): Promise<Blob> {
   if (!('VideoEncoder' in window)) throw new Error('瀏覽器不支援 VideoEncoder')
 
   onProgress?.(0, 'demux')
+  const allText = subtitles.map((s) => s.text).join(' ')
+  if (allText) {
+    await ensureFontLoaded(style.fontFamily, style.fontSize, allText)
+  }
   const demux = await demuxMp4(blob)
   if (signal?.aborted) throw abortReason(signal)
 

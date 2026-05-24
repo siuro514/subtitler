@@ -47,12 +47,19 @@ export interface VideoMeta {
   height: number
 }
 
+export interface CustomFont {
+  id: string
+  family: string
+  data: ArrayBuffer
+}
+
 export interface ProjectSnapshot {
   videoBlob: Blob | null
   videoMeta: VideoMeta | null
   subtitles: Subtitle[]
   style: SubtitleStyle
   watermark: Watermark
+  customFonts: CustomFont[]
 }
 
 export const DEFAULT_STYLE: SubtitleStyle = {

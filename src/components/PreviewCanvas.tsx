@@ -3,6 +3,7 @@ import { Pause, Play } from 'lucide-react'
 import { useEditor } from '@/store/editor'
 import { formatTime } from '@/lib/utils'
 import { loadWatermarkImage, renderFrame } from '@/lib/render'
+import { ensureFontLoaded } from '@/lib/fonts'
 
 export function PreviewCanvas() {
   const videoUrl = useEditor((s) => s.videoUrl)
@@ -145,6 +146,19 @@ export function PreviewCanvas() {
     drawNow()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subtitles, style, watermark, currentTime])
+
+  useEffect(() => {
+    let cancelled = false
+    const text = subtitles.map((s) => s.text).join(' ')
+    if (!text) return
+    void ensureFontLoaded(style.fontFamily, style.fontSize, text).then(() => {
+      if (!cancelled) drawNow()
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [style.fontFamily, style.fontSize, subtitles])
 
   if (!videoUrl || !meta) return null
 

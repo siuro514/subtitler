@@ -9,6 +9,9 @@ import { Timeline } from './components/Timeline/Timeline'
 import { ExportButton } from './components/ExportButton'
 import { DEMO_WATERMARK_DATA_URL, makeDemoSubtitles } from './lib/demo'
 import { clearSnapshot, loadSnapshot, onSaveStatus, startAutosave } from './store/persistence'
+import { injectGoogleFonts } from './lib/fonts'
+
+injectGoogleFonts()
 
 export function App() {
   const hasUnsupportedBrowser = useEditor((s) => s.hasUnsupportedBrowser)
