@@ -50,6 +50,23 @@ OFL-1.1 全文：https://scripts.sil.org/cms/scripts/page.php?item_id=OFL_web
 - 原始下載：https://github.com/Partyb0ssishere/cef-fonts-cjk
 - 授權：OFL-1.1
 
+### 851 手寫雜フォント (851 Tegaki Zatsu) — `851tegaki.woff2`
+- 作者：pm85122
+- 原始下載：https://pm85122.onamae.jp/851fontpage.html
+- 授權：作者自定（custom license）
+  - 商用使用 ✅
+  - 修改 ✅
+  - 再散佈 ✅
+  - 限制：不得主張著作權、不得未經授權販售字型檔案本身
+- 著作權仍歸 pm85122 所有，本專案僅為依條款再散佈。
+
+### 宅在家自動筆 (StayHome AutoPen) — `zhz-autopen.woff2`
+### 宅在家粉條甜 (StayHome Funtao) — `zhz-funtao.woff2`
+- 作者：宅在家專案（原作者不詳）
+- 原始下載：作者透過 Google Drive 散佈，原始 URL 見 https://www.storm.mg/article/11044680
+- 授權：授權狀況待逐一確認；依媒體報導為「免費商用、可改作」，但作者未隨檔附 LICENSE 文件。
+- 著作權仍歸原作者所有。若原作者要求下架，請聯絡專案 issue。
+
 ---
 
 依 OFL-1.1，本目錄之字型可自由使用、嵌入、再散佈與改作，但須保留本授權聲明檔。

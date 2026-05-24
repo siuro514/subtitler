@@ -34,6 +34,9 @@ export const BUNDLED_FONTS_DEF: BundledFontDef[] = [
   { family: 'Jason Handwriting 8p', file: 'jason8p.woff2', label: '清松手寫體 8p' },
   { family: 'Jason Handwriting 9', file: 'jason9.woff2', label: '清松手寫體 9' },
   { family: 'Jason Handwriting 9p', file: 'jason9p.woff2', label: '清松手寫體 9p' },
+  { family: '851 Tegaki Zatsu', file: '851tegaki.woff2', label: '851 手寫雜（手寫）' },
+  { family: 'StayHome AutoPen', file: 'zhz-autopen.woff2', label: '宅在家自動筆（手寫）' },
+  { family: 'StayHome Funtao', file: 'zhz-funtao.woff2', label: '宅在家粉條甜（手寫）' },
 ]
 
 export const BUNDLED_FONTS: FontOption[] = BUNDLED_FONTS_DEF.map((f) => ({
