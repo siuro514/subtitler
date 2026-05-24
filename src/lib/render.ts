@@ -225,7 +225,16 @@ export function drawWatermark(ctx: Ctx, input: RenderInputs) {
   }
 
   if (watermark.vinyl) {
-    drawVinyl(ctx, watermarkImage as CanvasImageSource, imgW, imgH, cx, cy, totalW / 2)
+    drawVinyl(
+      ctx,
+      watermarkImage as CanvasImageSource,
+      imgW,
+      imgH,
+      cx,
+      cy,
+      totalW / 2,
+      watermark.vinylThickness,
+    )
   } else if (isCircle) {
     drawCircleImage(ctx, watermarkImage as CanvasImageSource, imgW, imgH, cx, cy, totalW / 2)
   } else {
@@ -269,19 +278,22 @@ function drawVinyl(
   cx: number,
   cy: number,
   outerR: number,
+  thickness: number,
 ) {
-  const labelR = outerR * 0.4
+  const t = Math.min(1, Math.max(0, thickness))
+  const labelR = outerR * (0.85 - t * 0.65)
 
   ctx.fillStyle = '#0a0a0a'
   ctx.beginPath()
   ctx.arc(cx, cy, outerR, 0, Math.PI * 2)
   ctx.fill()
 
+  const ringSpan = outerR - labelR
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)'
   ctx.lineWidth = Math.max(0.5, outerR * 0.005)
-  const grooveCount = 14
+  const grooveCount = Math.max(2, Math.round(14 * (ringSpan / outerR)))
   for (let i = 1; i <= grooveCount; i++) {
-    const r = labelR + (outerR - labelR) * (i / (grooveCount + 1))
+    const r = labelR + ringSpan * (i / (grooveCount + 1))
     ctx.beginPath()
     ctx.arc(cx, cy, r, 0, Math.PI * 2)
     ctx.stroke()
@@ -290,7 +302,7 @@ function drawVinyl(
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)'
   ctx.lineWidth = Math.max(1, outerR * 0.02)
   ctx.beginPath()
-  ctx.arc(cx, cy, outerR * 0.88, Math.PI * 1.15, Math.PI * 1.45)
+  ctx.arc(cx, cy, labelR + ringSpan * 0.7, Math.PI * 1.15, Math.PI * 1.45)
   ctx.stroke()
 
   drawCircleImage(ctx, img, imgW, imgH, cx, cy, labelR)

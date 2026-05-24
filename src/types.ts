@@ -46,6 +46,7 @@ export interface Watermark {
   marginY: number
   shape: 'rect' | 'circle'
   vinyl: boolean
+  vinylThickness: number
   rotateRpm: number
 }
 
@@ -102,5 +103,6 @@ export const DEFAULT_WATERMARK: Watermark = {
   marginY: 0.03,
   shape: 'rect',
   vinyl: false,
+  vinylThickness: 0.7,
   rotateRpm: 0,
 }

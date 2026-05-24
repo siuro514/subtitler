@@ -77,16 +77,34 @@ export function WatermarkPanel() {
             </div>
           </Field>
 
-          <label className="flex items-center justify-between rounded-md border border-border p-2 text-xs">
-            <span className="flex items-center gap-2">
-              <Disc3 className="h-3.5 w-3.5" /> 黑膠唱片外圈
-            </span>
-            <input
-              type="checkbox"
-              checked={watermark.vinyl}
-              onChange={(e) => setWatermark({ vinyl: e.target.checked, shape: e.target.checked ? 'circle' : watermark.shape })}
-            />
-          </label>
+          <div className="rounded-md border border-border p-2 text-xs">
+            <label className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Disc3 className="h-3.5 w-3.5" /> 黑膠唱片外圈
+              </span>
+              <input
+                type="checkbox"
+                checked={watermark.vinyl}
+                onChange={(e) => setWatermark({ vinyl: e.target.checked, shape: e.target.checked ? 'circle' : watermark.shape })}
+              />
+            </label>
+            {watermark.vinyl && (
+              <div className="mt-2">
+                <label className="text-[10px] text-zinc-400">
+                  厚度 {Math.round(watermark.vinylThickness * 100)}%（薄 → 厚）
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  className="w-full accent-zinc-300"
+                  value={watermark.vinylThickness}
+                  onChange={(e) => setWatermark({ vinylThickness: parseFloat(e.target.value) })}
+                />
+              </div>
+            )}
+          </div>
 
           <Field label={watermark.rotateRpm === 0 ? '旋轉（關閉）' : `旋轉 ${watermark.rotateRpm} rpm`}>
             <input
