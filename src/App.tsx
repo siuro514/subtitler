@@ -7,6 +7,7 @@ import { SubtitleImporter } from './components/SubtitleImporter'
 import { WatermarkPanel } from './components/WatermarkPanel'
 import { Timeline } from './components/Timeline/Timeline'
 import { ExportButton } from './components/ExportButton'
+import { LyricsAligner } from './components/LyricsAligner'
 import { DEMO_WATERMARK_DATA_URL, makeDemoSubtitles } from './lib/demo'
 import { clearSnapshot, loadSnapshot, onSaveStatus, startAutosave } from './store/persistence'
 import { injectBundledFonts, injectGoogleFonts } from './lib/fonts'
@@ -97,6 +98,7 @@ export function App() {
                 <ExportButton />
               </div>
               <SubtitleImporter />
+              <LyricsAligner />
               <SubtitleStylePanel />
               <WatermarkPanel />
             </aside>
