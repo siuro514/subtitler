@@ -117,7 +117,14 @@ export const useEditor = create<EditorState>()(
     selectSubtitle: (id) => set({ selectedSubtitleId: id }),
 
     setStyle: (patch) =>
-      set((s) => ({ style: { ...s.style, ...patch, customY: clamp(patch.customY ?? s.style.customY, 0, 1) } })),
+      set((s) => ({
+        style: {
+          ...s.style,
+          ...patch,
+          customY: clamp(patch.customY ?? s.style.customY, 0, 1),
+          customX: clamp(patch.customX ?? s.style.customX, 0, 1),
+        },
+      })),
 
     setWatermark: (patch) => set((s) => ({ watermark: { ...s.watermark, ...patch } })),
 

@@ -12,6 +12,13 @@ const POSITIONS = [
   { label: '自訂', value: 'custom' },
 ] as const
 
+const POSITIONS_X = [
+  { label: '左', value: 'left' },
+  { label: '中', value: 'center' },
+  { label: '右', value: 'right' },
+  { label: '自訂', value: 'custom' },
+] as const
+
 function deriveFamilyName(filename: string): string {
   const base = filename.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim()
   return base || 'Custom Font'
@@ -213,31 +220,44 @@ export function SubtitleStylePanel() {
           />
         </label>
         {style.background && (
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            <Field label="顏色">
-              <input
-                type="color"
-                className="h-8 w-full rounded border border-border bg-zinc-900"
-                value={style.backgroundColor}
-                onChange={(e) => setStyle({ backgroundColor: e.target.value })}
-              />
-            </Field>
-            <Field label={`不透明 ${Math.round(style.backgroundOpacity * 100)}%`}>
+          <div className="space-y-2 pt-1">
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="顏色">
+                <input
+                  type="color"
+                  className="h-8 w-full rounded border border-border bg-zinc-900"
+                  value={style.backgroundColor}
+                  onChange={(e) => setStyle({ backgroundColor: e.target.value })}
+                />
+              </Field>
+              <Field label={`不透明 ${Math.round(style.backgroundOpacity * 100)}%`}>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  className="w-full accent-zinc-300"
+                  value={style.backgroundOpacity}
+                  onChange={(e) => setStyle({ backgroundOpacity: parseFloat(e.target.value) })}
+                />
+              </Field>
+            </div>
+            <Field label={`圓角 ${Math.round(style.backgroundRadius * 100)}%`}>
               <input
                 type="range"
                 min={0}
                 max={1}
-                step={0.01}
+                step={0.05}
                 className="w-full accent-zinc-300"
-                value={style.backgroundOpacity}
-                onChange={(e) => setStyle({ backgroundOpacity: parseFloat(e.target.value) })}
+                value={style.backgroundRadius}
+                onChange={(e) => setStyle({ backgroundRadius: parseFloat(e.target.value) })}
               />
             </Field>
           </div>
         )}
       </div>
 
-      <Field label="位置">
+      <Field label="垂直位置">
         <div className="grid grid-cols-4 gap-1">
           {POSITIONS.map((p) => (
             <button
@@ -266,6 +286,39 @@ export function SubtitleStylePanel() {
             className="w-full accent-zinc-300"
             value={style.customY}
             onChange={(e) => setStyle({ customY: parseFloat(e.target.value) })}
+          />
+        </Field>
+      )}
+
+      <Field label="水平位置">
+        <div className="grid grid-cols-4 gap-1">
+          {POSITIONS_X.map((p) => (
+            <button
+              key={p.value}
+              className={
+                'rounded-md border px-2 py-1 text-xs ' +
+                (style.positionX === p.value
+                  ? 'border-zinc-300 bg-zinc-800 text-zinc-100'
+                  : 'border-border text-zinc-400 hover:bg-zinc-900')
+              }
+              onClick={() => setStyle({ positionX: p.value })}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      {style.positionX === 'custom' && (
+        <Field label={`自訂 X ${Math.round(style.customX * 100)}%`}>
+          <input
+            type="range"
+            min={0.05}
+            max={0.95}
+            step={0.01}
+            className="w-full accent-zinc-300"
+            value={style.customX}
+            onChange={(e) => setStyle({ customX: parseFloat(e.target.value) })}
           />
         </Field>
       )}

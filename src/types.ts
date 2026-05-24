@@ -6,6 +6,7 @@ export interface Subtitle {
 }
 
 export type SubtitlePosition = 'top' | 'middle' | 'bottom' | 'custom'
+export type SubtitleHorizontalPosition = 'left' | 'center' | 'right' | 'custom'
 
 export interface SubtitleStyle {
   fontFamily: string
@@ -16,8 +17,11 @@ export interface SubtitleStyle {
   background: boolean
   backgroundColor: string
   backgroundOpacity: number
+  backgroundRadius: number
   position: SubtitlePosition
   customY: number
+  positionX: SubtitleHorizontalPosition
+  customX: number
   bold: boolean
   italic: boolean
   underline: boolean
@@ -75,8 +79,11 @@ export const DEFAULT_STYLE: SubtitleStyle = {
   background: false,
   backgroundColor: '#000000',
   backgroundOpacity: 0.5,
+  backgroundRadius: 0,
   position: 'bottom',
   customY: 0.85,
+  positionX: 'center',
+  customX: 0.5,
   bold: true,
   italic: false,
   underline: false,

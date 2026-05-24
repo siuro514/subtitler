@@ -75,7 +75,6 @@ export function drawSubtitle(ctx: Ctx, input: RenderInputs) {
   const fontStyle = style.italic ? 'italic' : 'normal'
   const fontWeight = style.bold ? 'bold' : 'normal'
   ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${style.fontFamily}`
-  ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
 
   const maxWidth = width * 0.9
@@ -83,16 +82,49 @@ export function drawSubtitle(ctx: Ctx, input: RenderInputs) {
   const lineHeight = fontSize * 1.25
   const blockH = lines.length * lineHeight
   const cy = subtitleY(height, style)
-  const x = width / 2
   const padX = fontSize * 0.4
   const padY = fontSize * 0.2
+
+  const marginX = width * 0.05
+  let textAlign: 'left' | 'center' | 'right' = 'center'
+  let x = width / 2
+  switch (style.positionX) {
+    case 'left':
+      textAlign = 'left'
+      x = marginX
+      break
+    case 'right':
+      textAlign = 'right'
+      x = width - marginX
+      break
+    case 'custom':
+      textAlign = 'center'
+      x = width * style.customX
+      break
+    default:
+      textAlign = 'center'
+      x = width / 2
+  }
+  ctx.textAlign = textAlign
 
   if (style.background) {
     const widths = lines.map((l) => ctx.measureText(l).width)
     const boxW = Math.max(...widths) + padX * 2
     const boxH = blockH + padY * 2
+    let boxX: number
+    if (textAlign === 'left') boxX = x - padX
+    else if (textAlign === 'right') boxX = x - boxW + padX
+    else boxX = x - boxW / 2
+    const boxY = cy - blockH / 2 - padY
     ctx.fillStyle = hexToRgba(style.backgroundColor, style.backgroundOpacity)
-    ctx.fillRect(x - boxW / 2, cy - blockH / 2 - padY, boxW, boxH)
+    const radius = Math.min(boxH / 2, boxW / 2, style.backgroundRadius * fontSize)
+    if (radius > 0 && typeof (ctx as CanvasRenderingContext2D).roundRect === 'function') {
+      ctx.beginPath()
+      ;(ctx as CanvasRenderingContext2D).roundRect(boxX, boxY, boxW, boxH, radius)
+      ctx.fill()
+    } else {
+      ctx.fillRect(boxX, boxY, boxW, boxH)
+    }
   }
 
   const strokeW = style.strokeWidth * scale
@@ -111,8 +143,18 @@ export function drawSubtitle(ctx: Ctx, input: RenderInputs) {
 
     if (style.underline || style.strikethrough) {
       const lineWidth = ctx.measureText(lines[i]).width
-      const left = x - lineWidth / 2
-      const right = x + lineWidth / 2
+      let left: number
+      let right: number
+      if (textAlign === 'left') {
+        left = x
+        right = x + lineWidth
+      } else if (textAlign === 'right') {
+        left = x - lineWidth
+        right = x
+      } else {
+        left = x - lineWidth / 2
+        right = x + lineWidth / 2
+      }
       ctx.save()
       ctx.lineWidth = decoThickness
       ctx.strokeStyle = style.color
