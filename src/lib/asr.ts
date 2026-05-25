@@ -1,10 +1,4 @@
-import type { Subtitle } from '@/types'
-import { uid } from './utils'
-
-export interface ASRChunk {
-  timestamp: [number, number | null]
-  text: string
-}
+import type { AsrWord } from './alignment'
 
 export type ASRStage =
   | { kind: 'loading-model'; progress: number }
@@ -15,6 +9,12 @@ export interface RunASROptions {
   language?: string
   onStage?: (s: ASRStage) => void
   signal?: AbortSignal
+  granularity?: 'word' | 'segment'
+}
+
+interface RawChunk {
+  timestamp: [number | null, number | null]
+  text: string
 }
 
 let pipelinePromise: Promise<unknown> | null = null
@@ -60,18 +60,18 @@ async function loadPipeline(
 export async function runASR(
   pcm16k: Float32Array,
   opts: RunASROptions,
-): Promise<ASRChunk[]> {
-  const { onStage = () => {}, signal, language = 'zh' } = opts
+): Promise<AsrWord[]> {
+  const { onStage = () => {}, signal, language = 'zh', granularity = 'word' } = opts
   const transcriber = (await loadPipeline(onStage, signal)) as (
     input: Float32Array,
     opts: unknown,
-  ) => Promise<{ chunks?: ASRChunk[]; text?: string }>
+  ) => Promise<{ chunks?: RawChunk[]; text?: string }>
 
   if (signal?.aborted) throw new Error('已取消')
   onStage({ kind: 'transcribing', progress: 0 })
 
   const result = await transcriber(pcm16k, {
-    return_timestamps: true,
+    return_timestamps: granularity === 'word' ? 'word' : true,
     chunk_length_s: 30,
     stride_length_s: 5,
     language,
@@ -79,93 +79,36 @@ export async function runASR(
   })
 
   onStage({ kind: 'done' })
-  return result.chunks ?? []
+  return normalizeWords(result.chunks ?? [], pcm16k.length / 16000)
 }
 
-export interface AlignmentResult {
-  subtitles: Subtitle[]
-  matched: number
-  spreadCount: number
-  normalizedChunks: { start: number; end: number; text: string }[]
-}
-
-function normalizeChunks(chunks: ASRChunk[], totalDuration: number) {
-  const out: { start: number; end: number; text: string }[] = []
+function normalizeWords(raw: RawChunk[], totalDuration: number): AsrWord[] {
+  const out: AsrWord[] = []
   let prevEnd = 0
-  for (let i = 0; i < chunks.length; i++) {
-    const c = chunks[i]
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i]
+    const text = c.text.trim()
+    if (text.length === 0) continue
     const rawStart = c.timestamp[0]
     const rawEnd = c.timestamp[1]
     let start = typeof rawStart === 'number' ? rawStart : prevEnd
+    let end: number
     if (typeof rawEnd === 'number') {
-      out.push({ start, end: rawEnd, text: c.text.trim() })
-      prevEnd = rawEnd
-      continue
-    }
-    let nextStart: number | null = null
-    for (let j = i + 1; j < chunks.length; j++) {
-      const ns = chunks[j].timestamp[0]
-      if (typeof ns === 'number') {
-        nextStart = ns
-        break
+      end = rawEnd
+    } else {
+      let nextStart: number | null = null
+      for (let j = i + 1; j < raw.length; j++) {
+        const ns = raw[j].timestamp[0]
+        if (typeof ns === 'number') {
+          nextStart = ns
+          break
+        }
       }
+      end = nextStart ?? totalDuration
     }
-    const end = nextStart ?? totalDuration
-    out.push({ start, end, text: c.text.trim() })
+    if (end <= start) end = start + 0.05
+    out.push({ start, end, text })
     prevEnd = end
   }
-  return out.filter((c) => c.text.length > 0)
-}
-
-export function alignLyricsToChunks(
-  lyrics: string[],
-  chunks: ASRChunk[],
-  totalDuration: number,
-): AlignmentResult {
-  if (lyrics.length === 0)
-    return { subtitles: [], matched: 0, spreadCount: 0, normalizedChunks: [] }
-
-  const normalized = normalizeChunks(chunks, totalDuration)
-
-  if (normalized.length === 0) {
-    const per = totalDuration / lyrics.length
-    const subtitles = lyrics.map((text, i) => ({
-      id: uid(),
-      start: per * i,
-      end: per * (i + 1),
-      text,
-    }))
-    return { subtitles, matched: 0, spreadCount: lyrics.length, normalizedChunks: normalized }
-  }
-
-  const matched = Math.min(lyrics.length, normalized.length)
-  const subtitles: Subtitle[] = []
-
-  for (let i = 0; i < matched; i++) {
-    const { start, end } = normalized[i]
-    const nextStart = normalized[i + 1]?.start ?? totalDuration
-    subtitles.push({
-      id: uid(),
-      start,
-      end: Math.max(start + 0.1, end || nextStart),
-      text: lyrics[i],
-    })
-  }
-
-  const remaining = lyrics.slice(matched)
-  if (remaining.length > 0) {
-    const lastEnd = subtitles[matched - 1]?.end ?? 0
-    const span = Math.max(0.1, totalDuration - lastEnd)
-    const per = span / remaining.length
-    for (let i = 0; i < remaining.length; i++) {
-      subtitles.push({
-        id: uid(),
-        start: lastEnd + per * i,
-        end: lastEnd + per * (i + 1),
-        text: remaining[i],
-      })
-    }
-  }
-
-  return { subtitles, matched, spreadCount: remaining.length, normalizedChunks: normalized }
+  return out
 }

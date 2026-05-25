@@ -2,7 +2,8 @@ import { useRef, useState } from 'react'
 import { Sparkles, X } from 'lucide-react'
 import { useEditor } from '@/store/editor'
 import { extractPcm16kMono } from '@/lib/audio'
-import { alignLyricsToChunks, runASR } from '@/lib/asr'
+import { runASR } from '@/lib/asr'
+import { alignLyricsByContent } from '@/lib/alignment'
 import { Field, Section } from './ui/Field'
 
 type Stage = 'extract' | 'load-model' | 'asr' | 'align' | 'done'
@@ -57,8 +58,9 @@ export function LyricsAligner() {
       if (ac.signal.aborted) return
 
       setStage('load-model')
-      const chunks = await runASR(pcm, {
+      const words = await runASR(pcm, {
         language: lang,
+        granularity: 'word',
         signal: ac.signal,
         onStage: (s) => {
           if (s.kind === 'loading-model') {
@@ -75,40 +77,39 @@ export function LyricsAligner() {
       setStage('align')
       setProgress(0.95)
       const totalDuration = videoMeta?.duration ?? pcm.length / 16000
-      const { subtitles, matched, spreadCount, normalizedChunks } = alignLyricsToChunks(
+      const { subtitles, debug } = alignLyricsByContent(
         lyricLines,
-        chunks,
+        words,
         totalDuration,
       )
       setSubtitles(subtitles)
 
       setStage('done')
       setProgress(1)
+      const matchedLines = lyricLines.length - debug.unmappedLineCount
+      const matchRatio = debug.lyricCharCount
+        ? Math.round((debug.matchedChars / debug.lyricCharCount) * 100)
+        : 0
       const parts: string[] = []
       parts.push(
-        `Whisper 偵測到 ${chunks.length} 段語音（過濾空白後 ${normalizedChunks.length} 段）；歌詞 ${lyricLines.length} 行`,
+        `Whisper 抽出 ${words.length} 個 token / ${debug.asrCharCount} 字；歌詞 ${lyricLines.length} 行 / ${debug.lyricCharCount} 字`,
       )
-      if (matched > 0) parts.push(`前 ${matched} 行依 Whisper 時間軸 1:1 對映`)
-      if (spreadCount > 0) {
-        parts.push(
-          `剩下 ${spreadCount} 行平均分配到「最後語音段結束 → 影片結束」`,
-        )
-      }
-      if (normalizedChunks.length > lyricLines.length) {
-        parts.push(
-          `Whisper 多偵測的 ${normalizedChunks.length - lyricLines.length} 段已忽略`,
-        )
-      }
-      if (normalizedChunks.length > 0) {
-        parts.push('\nWhisper 原始時間軸（可比對是否正確）：')
-        const lines = normalizedChunks.slice(0, 20).map((c, i) => {
-          const start = c.start.toFixed(2).padStart(6)
-          const end = c.end.toFixed(2).padStart(6)
-          const t = c.text.length > 24 ? c.text.slice(0, 24) + '…' : c.text
-          return `${String(i + 1).padStart(2)}. ${start}s–${end}s  ${t}`
+      parts.push(
+        `字級對齊：${debug.matchedChars} / ${debug.lyricCharCount} 字命中（${matchRatio}%）`,
+      )
+      parts.push(
+        `行級結果：${matchedLines} 行從 Whisper 抓到時間，${debug.unmappedLineCount} 行用前後內插`,
+      )
+      if (words.length > 0) {
+        parts.push('\nWhisper 原始 token（前 40 個）：')
+        const lines = words.slice(0, 40).map((w, i) => {
+          const start = w.start.toFixed(2).padStart(6)
+          const end = w.end.toFixed(2).padStart(6)
+          const t = w.text.length > 18 ? w.text.slice(0, 18) + '…' : w.text
+          return `${String(i + 1).padStart(3)}. ${start}s–${end}s  ${t}`
         })
         parts.push(lines.join('\n'))
-        if (normalizedChunks.length > 20) parts.push(`…（共 ${normalizedChunks.length} 段）`)
+        if (words.length > 40) parts.push(`…（共 ${words.length} 個 token）`)
       }
       setInfo(parts.join('\n'))
     } catch (e) {
