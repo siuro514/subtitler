@@ -27,12 +27,19 @@ function deriveFamilyName(filename: string): string {
 export function SubtitleStylePanel() {
   const style = useEditor((s) => s.style)
   const setStyle = useEditor((s) => s.setStyle)
+  const pushHistory = useEditor((s) => s.pushHistory)
   const customFonts = useEditor((s) => s.customFonts)
   const addCustomFont = useEditor((s) => s.addCustomFont)
   const removeCustomFont = useEditor((s) => s.removeCustomFont)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [fontError, setFontError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+
+  const setStyleHist = (patch: Parameters<typeof setStyle>[0]) => {
+    pushHistory()
+    setStyle(patch)
+  }
+  const onSliderDown = () => pushHistory()
 
   async function handleFontFile(file: File) {
     setFontError(null)
@@ -63,7 +70,7 @@ export function SubtitleStylePanel() {
         <select
           className="w-full rounded-md border border-border bg-zinc-900 px-2 py-1.5 text-sm"
           value={style.fontFamily}
-          onChange={(e) => setStyle({ fontFamily: e.target.value })}
+          onChange={(e) => setStyleHist({ fontFamily: e.target.value })}
         >
           <optgroup label="系統字型">
             {SYSTEM_FONTS.map((f) => (
@@ -153,7 +160,7 @@ export function SubtitleStylePanel() {
               key={key}
               aria-label={label}
               title={label}
-              onClick={() => setStyle({ [key]: !style[key] } as Partial<typeof style>)}
+              onClick={() => setStyleHist({ [key]: !style[key] } as Partial<typeof style>)}
               className={cn(
                 'flex h-8 items-center justify-center rounded-md border text-xs',
                 style[key]
@@ -175,6 +182,7 @@ export function SubtitleStylePanel() {
           step={1}
           className="w-full accent-zinc-300"
           value={style.fontSize}
+          onPointerDown={onSliderDown}
           onChange={(e) => setStyle({ fontSize: parseInt(e.target.value, 10) })}
         />
       </Field>
@@ -185,7 +193,7 @@ export function SubtitleStylePanel() {
             type="color"
             className="h-8 w-full rounded border border-border bg-zinc-900"
             value={style.color}
-            onChange={(e) => setStyle({ color: e.target.value })}
+            onChange={(e) => setStyleHist({ color: e.target.value })}
           />
         </Field>
         <Field label="描邊色">
@@ -193,7 +201,7 @@ export function SubtitleStylePanel() {
             type="color"
             className="h-8 w-full rounded border border-border bg-zinc-900"
             value={style.strokeColor}
-            onChange={(e) => setStyle({ strokeColor: e.target.value })}
+            onChange={(e) => setStyleHist({ strokeColor: e.target.value })}
           />
         </Field>
       </div>
@@ -206,6 +214,7 @@ export function SubtitleStylePanel() {
           step={0.5}
           className="w-full accent-zinc-300"
           value={style.strokeWidth}
+          onPointerDown={onSliderDown}
           onChange={(e) => setStyle({ strokeWidth: parseFloat(e.target.value) })}
         />
       </Field>
@@ -216,7 +225,7 @@ export function SubtitleStylePanel() {
           <input
             type="checkbox"
             checked={style.background}
-            onChange={(e) => setStyle({ background: e.target.checked })}
+            onChange={(e) => setStyleHist({ background: e.target.checked })}
           />
         </label>
         {style.background && (
@@ -227,7 +236,7 @@ export function SubtitleStylePanel() {
                   type="color"
                   className="h-8 w-full rounded border border-border bg-zinc-900"
                   value={style.backgroundColor}
-                  onChange={(e) => setStyle({ backgroundColor: e.target.value })}
+                  onChange={(e) => setStyleHist({ backgroundColor: e.target.value })}
                 />
               </Field>
               <Field label={`不透明 ${Math.round(style.backgroundOpacity * 100)}%`}>
@@ -238,6 +247,7 @@ export function SubtitleStylePanel() {
                   step={0.01}
                   className="w-full accent-zinc-300"
                   value={style.backgroundOpacity}
+                  onPointerDown={onSliderDown}
                   onChange={(e) => setStyle({ backgroundOpacity: parseFloat(e.target.value) })}
                 />
               </Field>
@@ -250,6 +260,7 @@ export function SubtitleStylePanel() {
                 step={0.05}
                 className="w-full accent-zinc-300"
                 value={style.backgroundRadius}
+                onPointerDown={onSliderDown}
                 onChange={(e) => setStyle({ backgroundRadius: parseFloat(e.target.value) })}
               />
             </Field>
@@ -268,7 +279,7 @@ export function SubtitleStylePanel() {
                   ? 'border-zinc-300 bg-zinc-800 text-zinc-100'
                   : 'border-border text-zinc-400 hover:bg-zinc-900')
               }
-              onClick={() => setStyle({ position: p.value })}
+              onClick={() => setStyleHist({ position: p.value })}
             >
               {p.label}
             </button>
@@ -285,6 +296,7 @@ export function SubtitleStylePanel() {
             step={0.01}
             className="w-full accent-zinc-300"
             value={style.customY}
+            onPointerDown={onSliderDown}
             onChange={(e) => setStyle({ customY: parseFloat(e.target.value) })}
           />
         </Field>
@@ -301,7 +313,7 @@ export function SubtitleStylePanel() {
                   ? 'border-zinc-300 bg-zinc-800 text-zinc-100'
                   : 'border-border text-zinc-400 hover:bg-zinc-900')
               }
-              onClick={() => setStyle({ positionX: p.value })}
+              onClick={() => setStyleHist({ positionX: p.value })}
             >
               {p.label}
             </button>
@@ -318,6 +330,7 @@ export function SubtitleStylePanel() {
             step={0.01}
             className="w-full accent-zinc-300"
             value={style.customX}
+            onPointerDown={onSliderDown}
             onChange={(e) => setStyle({ customX: parseFloat(e.target.value) })}
           />
         </Field>

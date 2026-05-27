@@ -18,6 +18,7 @@ export function SubtitleBlock({ subtitle, pxPerSec, duration, selected }: Props)
   const updateSubtitle = useEditor((s) => s.updateSubtitle)
   const selectSubtitle = useEditor((s) => s.selectSubtitle)
   const setCurrentTime = useEditor((s) => s.setCurrentTime)
+  const pushHistory = useEditor((s) => s.pushHistory)
   const editingRef = useRef<HTMLDivElement>(null)
   const [editing, setEditing] = useState(false)
 
@@ -29,6 +30,7 @@ export function SubtitleBlock({ subtitle, pxPerSec, duration, selected }: Props)
     e.stopPropagation()
     e.preventDefault()
     selectSubtitle(subtitle.id)
+    pushHistory()
     const startX = e.clientX
     const origStart = subtitle.start
     const origEnd = subtitle.end
@@ -87,7 +89,10 @@ export function SubtitleBlock({ subtitle, pxPerSec, duration, selected }: Props)
   function commitEdit() {
     const text = editingRef.current?.innerText.trim() ?? ''
     setEditing(false)
-    updateSubtitle(subtitle.id, { text })
+    if (text !== subtitle.text) {
+      pushHistory()
+      updateSubtitle(subtitle.id, { text })
+    }
   }
 
   return (

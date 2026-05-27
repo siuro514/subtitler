@@ -14,6 +14,15 @@ import { clamp, uid } from '@/lib/utils'
 import { registerCustomFont } from '@/lib/fonts'
 import { resolveOverlap } from '@/lib/overlap'
 
+interface HistoryEntry {
+  subtitles: Subtitle[]
+  style: SubtitleStyle
+  watermark: Watermark
+  customFonts: CustomFont[]
+}
+
+const MAX_HISTORY = 50
+
 interface EditorState {
   videoBlob: Blob | null
   videoUrl: string | null
@@ -27,6 +36,8 @@ interface EditorState {
   exportProgress: number | null
   hasUnsupportedBrowser: boolean
   customFonts: CustomFont[]
+  past: HistoryEntry[]
+  future: HistoryEntry[]
 
   setVideo: (blob: Blob, meta: VideoMeta) => void
   clearVideo: () => void
@@ -42,8 +53,25 @@ interface EditorState {
   setExportProgress: (p: number | null) => void
   addCustomFont: (family: string, data: ArrayBuffer) => Promise<void>
   removeCustomFont: (id: string) => void
+  pushHistory: () => void
+  undo: () => void
+  redo: () => void
   hydrate: (snap: ProjectSnapshot) => Promise<void>
   toSnapshot: () => ProjectSnapshot
+}
+
+function snapshotHistory(s: {
+  subtitles: Subtitle[]
+  style: SubtitleStyle
+  watermark: Watermark
+  customFonts: CustomFont[]
+}): HistoryEntry {
+  return {
+    subtitles: s.subtitles,
+    style: s.style,
+    watermark: s.watermark,
+    customFonts: s.customFonts,
+  }
 }
 
 export const useEditor = create<EditorState>()(
@@ -61,6 +89,8 @@ export const useEditor = create<EditorState>()(
     hasUnsupportedBrowser:
       typeof window !== 'undefined' && !('VideoEncoder' in window),
     customFonts: [],
+    past: [],
+    future: [],
 
     setVideo: (blob, meta) => {
       const prev = get().videoUrl
@@ -86,13 +116,16 @@ export const useEditor = create<EditorState>()(
     setCurrentTime: (t) => set({ currentTime: t }),
     setPlaying: (p) => set({ isPlaying: p }),
 
-    setSubtitles: (subs) =>
+    setSubtitles: (subs) => {
+      get().pushHistory()
       set({
         subtitles: [...subs].sort((a, b) => a.start - b.start),
         selectedSubtitleId: null,
-      }),
+      })
+    },
 
     addSubtitle: (start, end, text = '') => {
+      get().pushHistory()
       const id = uid()
       const sub: Subtitle = { id, start, end, text }
       set((s) => {
@@ -117,11 +150,13 @@ export const useEditor = create<EditorState>()(
         return { subtitles: resolveOverlap(updated, id, duration) }
       }),
 
-    removeSubtitle: (id) =>
+    removeSubtitle: (id) => {
+      get().pushHistory()
       set((s) => ({
         subtitles: s.subtitles.filter((x) => x.id !== id),
         selectedSubtitleId: s.selectedSubtitleId === id ? null : s.selectedSubtitleId,
-      })),
+      }))
+    },
 
     selectSubtitle: (id) => set({ selectedSubtitleId: id }),
 
@@ -137,16 +172,50 @@ export const useEditor = create<EditorState>()(
 
     setWatermark: (patch) => set((s) => ({ watermark: { ...s.watermark, ...patch } })),
 
+    pushHistory: () => {
+      const s = get()
+      const entry = snapshotHistory(s)
+      const past = [...s.past, entry]
+      if (past.length > MAX_HISTORY) past.shift()
+      set({ past, future: [] })
+    },
+
+    undo: () => {
+      const s = get()
+      if (s.past.length === 0) return
+      const prev = s.past[s.past.length - 1]
+      const cur = snapshotHistory(s)
+      set({
+        ...prev,
+        past: s.past.slice(0, -1),
+        future: [cur, ...s.future],
+      })
+    },
+
+    redo: () => {
+      const s = get()
+      if (s.future.length === 0) return
+      const next = s.future[0]
+      const cur = snapshotHistory(s)
+      set({
+        ...next,
+        past: [...s.past, cur],
+        future: s.future.slice(1),
+      })
+    },
+
     setExportProgress: (p) => set({ exportProgress: p }),
 
     addCustomFont: async (family, data) => {
       const buf = data.slice(0)
       await registerCustomFont(family, buf)
+      get().pushHistory()
       const font: CustomFont = { id: uid(), family, data }
       set((s) => ({ customFonts: [...s.customFonts, font] }))
     },
 
     removeCustomFont: (id) => {
+      get().pushHistory()
       set((s) => ({ customFonts: s.customFonts.filter((f) => f.id !== id) }))
     },
 

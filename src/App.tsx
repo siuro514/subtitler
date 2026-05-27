@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Redo2, Undo2 } from 'lucide-react'
 import { useEditor } from './store/editor'
 import { VideoUploader } from './components/VideoUploader'
 import { PreviewCanvas } from './components/PreviewCanvas'
@@ -7,6 +8,7 @@ import { SubtitleImporter } from './components/SubtitleImporter'
 import { WatermarkPanel } from './components/WatermarkPanel'
 import { Timeline } from './components/Timeline/Timeline'
 import { ExportButton } from './components/ExportButton'
+import { SrtExportButton } from './components/SrtExportButton'
 import { LyricsAligner } from './components/LyricsAligner'
 import { DEMO_WATERMARK_DATA_URL, makeDemoSubtitles } from './lib/demo'
 import { clearSnapshot, loadSnapshot, onSaveStatus, startAutosave } from './store/persistence'
@@ -23,6 +25,10 @@ export function App() {
   const setSubtitles = useEditor((s) => s.setSubtitles)
   const setWatermark = useEditor((s) => s.setWatermark)
   const hydrate = useEditor((s) => s.hydrate)
+  const undo = useEditor((s) => s.undo)
+  const redo = useEditor((s) => s.redo)
+  const canUndo = useEditor((s) => s.past.length > 0)
+  const canRedo = useEditor((s) => s.future.length > 0)
   const [hydrated, setHydrated] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'error'>('idle')
 
@@ -40,6 +46,21 @@ export function App() {
       unsub()
     }
   }, [hydrate])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey)) return
+      if (e.key !== 'z' && e.key !== 'Z') return
+      const t = e.target as HTMLElement | null
+      const tag = t?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return
+      e.preventDefault()
+      if (e.shiftKey) redo()
+      else undo()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [undo, redo])
 
   if (hasUnsupportedBrowser) {
     return (
@@ -60,7 +81,25 @@ export function App() {
         <h1 className="text-lg font-semibold">Subtitler</h1>
         {videoUrl && (
           <div className="flex items-center gap-2">
-            <span className="mr-2 text-[10px] text-zinc-500">
+            <button
+              className="rounded-md border border-border p-1.5 text-zinc-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-30"
+              onClick={undo}
+              disabled={!canUndo}
+              title="復原 (⌘Z)"
+              aria-label="Undo"
+            >
+              <Undo2 className="h-3.5 w-3.5" />
+            </button>
+            <button
+              className="rounded-md border border-border p-1.5 text-zinc-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-30"
+              onClick={redo}
+              disabled={!canRedo}
+              title="重做 (⌘⇧Z)"
+              aria-label="Redo"
+            >
+              <Redo2 className="h-3.5 w-3.5" />
+            </button>
+            <span className="mr-2 ml-2 text-[10px] text-zinc-500">
               {saveStatus === 'saving' && '儲存中…'}
               {saveStatus === 'error' && '儲存失敗'}
             </span>
@@ -94,8 +133,9 @@ export function App() {
         ) : videoUrl ? (
           <div className="flex h-full">
             <aside className="w-72 shrink-0 overflow-y-auto border-r border-border bg-zinc-900/30">
-              <div className="border-b border-border p-4">
+              <div className="space-y-2 border-b border-border p-4">
                 <ExportButton />
+                <SrtExportButton />
               </div>
               <SubtitleImporter />
               <LyricsAligner />

@@ -19,7 +19,14 @@ const POSITION_GRID: Watermark['position'][] = [
 export function WatermarkPanel() {
   const watermark = useEditor((s) => s.watermark)
   const setWatermark = useEditor((s) => s.setWatermark)
+  const pushHistory = useEditor((s) => s.pushHistory)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const setWatermarkHist = (patch: Parameters<typeof setWatermark>[0]) => {
+    pushHistory()
+    setWatermark(patch)
+  }
+  const onSliderDown = () => pushHistory()
 
   function handleFile(file: File) {
     if (file.size > 10 * 1024 * 1024) {
@@ -27,7 +34,7 @@ export function WatermarkPanel() {
       return
     }
     const reader = new FileReader()
-    reader.onload = () => setWatermark({ imageDataUrl: String(reader.result) })
+    reader.onload = () => setWatermarkHist({ imageDataUrl: String(reader.result) })
     reader.readAsDataURL(file)
   }
 
@@ -43,7 +50,7 @@ export function WatermarkPanel() {
             />
             <button
               className="absolute right-1 top-1 rounded-full bg-zinc-900/80 p-1 text-zinc-400 hover:text-zinc-100"
-              onClick={() => setWatermark({ imageDataUrl: null })}
+              onClick={() => setWatermarkHist({ imageDataUrl: null })}
               aria-label="移除"
             >
               <X className="h-3.5 w-3.5" />
@@ -59,7 +66,7 @@ export function WatermarkPanel() {
                     ? 'border-zinc-300 bg-zinc-800'
                     : 'border-border text-zinc-400 hover:bg-zinc-900')
                 }
-                onClick={() => setWatermark({ shape: 'rect', vinyl: false })}
+                onClick={() => setWatermarkHist({ shape: 'rect', vinyl: false })}
               >
                 <Square className="h-3.5 w-3.5" /> 方
               </button>
@@ -70,7 +77,7 @@ export function WatermarkPanel() {
                     ? 'border-zinc-300 bg-zinc-800'
                     : 'border-border text-zinc-400 hover:bg-zinc-900')
                 }
-                onClick={() => setWatermark({ shape: 'circle', vinyl: false })}
+                onClick={() => setWatermarkHist({ shape: 'circle', vinyl: false })}
               >
                 <CircleIcon className="h-3.5 w-3.5" /> 圓
               </button>
@@ -85,7 +92,7 @@ export function WatermarkPanel() {
               <input
                 type="checkbox"
                 checked={watermark.vinyl}
-                onChange={(e) => setWatermark({ vinyl: e.target.checked, shape: e.target.checked ? 'circle' : watermark.shape })}
+                onChange={(e) => setWatermarkHist({ vinyl: e.target.checked, shape: e.target.checked ? 'circle' : watermark.shape })}
               />
             </label>
             {watermark.vinyl && (
@@ -100,6 +107,7 @@ export function WatermarkPanel() {
                   step={0.05}
                   className="w-full accent-zinc-300"
                   value={watermark.vinylThickness}
+                  onPointerDown={onSliderDown}
                   onChange={(e) => setWatermark({ vinylThickness: parseFloat(e.target.value) })}
                 />
               </div>
@@ -114,6 +122,7 @@ export function WatermarkPanel() {
               step={1}
               className="w-full accent-zinc-300"
               value={watermark.rotateRpm}
+              onPointerDown={onSliderDown}
               onChange={(e) => setWatermark({ rotateRpm: parseInt(e.target.value, 10) })}
             />
             <div className="mt-1 flex gap-1">
@@ -121,7 +130,7 @@ export function WatermarkPanel() {
                 <button
                   key={rpm}
                   className="rounded border border-border px-1.5 py-0.5 text-[10px] text-zinc-500 hover:bg-zinc-800"
-                  onClick={() => setWatermark({ rotateRpm: rpm })}
+                  onClick={() => setWatermarkHist({ rotateRpm: rpm })}
                 >
                   {rpm === 0 ? '停' : `${rpm}`}
                 </button>
@@ -137,6 +146,7 @@ export function WatermarkPanel() {
               step={0.01}
               className="w-full accent-zinc-300"
               value={watermark.width}
+              onPointerDown={onSliderDown}
               onChange={(e) => setWatermark({ width: parseFloat(e.target.value) })}
             />
           </Field>
@@ -149,6 +159,7 @@ export function WatermarkPanel() {
               step={0.01}
               className="w-full accent-zinc-300"
               value={watermark.opacity}
+              onPointerDown={onSliderDown}
               onChange={(e) => setWatermark({ opacity: parseFloat(e.target.value) })}
             />
           </Field>
@@ -165,7 +176,7 @@ export function WatermarkPanel() {
                       ? 'border-zinc-300 bg-zinc-800'
                       : 'border-border text-zinc-500 hover:bg-zinc-900')
                   }
-                  onClick={() => setWatermark({ position: pos })}
+                  onClick={() => setWatermarkHist({ position: pos })}
                 >
                   <span
                     className={
@@ -187,6 +198,7 @@ export function WatermarkPanel() {
                 step={0.01}
                 className="w-full accent-zinc-300"
                 value={watermark.marginX}
+                onPointerDown={onSliderDown}
                 onChange={(e) => setWatermark({ marginX: parseFloat(e.target.value) })}
               />
             </Field>
@@ -198,6 +210,7 @@ export function WatermarkPanel() {
                 step={0.01}
                 className="w-full accent-zinc-300"
                 value={watermark.marginY}
+                onPointerDown={onSliderDown}
                 onChange={(e) => setWatermark({ marginY: parseFloat(e.target.value) })}
               />
             </Field>
