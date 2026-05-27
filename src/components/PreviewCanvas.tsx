@@ -81,6 +81,21 @@ export function PreviewCanvas() {
   }, [isPlaying, setPlaying])
 
   useEffect(() => {
+    if (!meta) return
+    function onKey(e: KeyboardEvent) {
+      if (e.code !== 'Space' || e.repeat) return
+      const t = e.target as HTMLElement | null
+      if (!t) return
+      const tag = t.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return
+      e.preventDefault()
+      setPlaying(!useEditor.getState().isPlaying)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [meta, setPlaying])
+
+  useEffect(() => {
     const v = videoRef.current
     if (!v || !meta) return
     if (Math.abs(v.currentTime - currentTime) > 0.05) {
