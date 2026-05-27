@@ -12,6 +12,7 @@ import {
 } from '@/types'
 import { clamp, uid } from '@/lib/utils'
 import { registerCustomFont } from '@/lib/fonts'
+import { resolveOverlap } from '@/lib/overlap'
 
 interface EditorState {
   videoBlob: Blob | null
@@ -94,19 +95,27 @@ export const useEditor = create<EditorState>()(
     addSubtitle: (start, end, text = '') => {
       const id = uid()
       const sub: Subtitle = { id, start, end, text }
-      set((s) => ({
-        subtitles: [...s.subtitles, sub].sort((a, b) => a.start - b.start),
-        selectedSubtitleId: id,
-      }))
+      set((s) => {
+        const list = [...s.subtitles, sub]
+        const duration = s.videoMeta?.duration ?? Number.POSITIVE_INFINITY
+        return {
+          subtitles: resolveOverlap(list, id, duration),
+          selectedSubtitleId: id,
+        }
+      })
       return id
     },
 
     updateSubtitle: (id, patch) =>
-      set((s) => ({
-        subtitles: s.subtitles
-          .map((x) => (x.id === id ? { ...x, ...patch } : x))
-          .sort((a, b) => a.start - b.start),
-      })),
+      set((s) => {
+        const updated = s.subtitles.map((x) => (x.id === id ? { ...x, ...patch } : x))
+        const timingChanged = 'start' in patch || 'end' in patch
+        if (!timingChanged) {
+          return { subtitles: updated.sort((a, b) => a.start - b.start) }
+        }
+        const duration = s.videoMeta?.duration ?? Number.POSITIVE_INFINITY
+        return { subtitles: resolveOverlap(updated, id, duration) }
+      }),
 
     removeSubtitle: (id) =>
       set((s) => ({
