@@ -1,4 +1,4 @@
-import type { Subtitle, SubtitleStyle, Watermark } from '@/types'
+import type { Subtitle, SubtitleStyle, TextLabel, TextStyleCore, Watermark } from '@/types'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
@@ -10,6 +10,7 @@ export interface RenderInputs {
   style: SubtitleStyle
   watermark: Watermark
   watermarkImage: HTMLImageElement | ImageBitmap | null
+  labels: TextLabel[]
 }
 
 function findActive(subs: Subtitle[], t: number): Subtitle | null {
@@ -64,47 +65,41 @@ function wrapLines(ctx: Ctx, text: string, maxWidth: number): string[] {
   return result
 }
 
-export function drawSubtitle(ctx: Ctx, input: RenderInputs) {
-  const sub = findActive(input.subtitles, input.time)
-  if (!sub || !sub.text.trim()) return
-
-  const { width, height, style } = input
-  const scale = Math.min(width, height) / 720
-  const fontSize = style.fontSize * scale
-  ctx.save()
+function setFont(ctx: Ctx, style: TextStyleCore, fontSize: number) {
   const fontStyle = style.italic ? 'italic' : 'normal'
   const fontWeight = style.bold ? 'bold' : 'normal'
   ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${style.fontFamily}`
+}
+
+interface PaintTextOpts {
+  text: string
+  /** Anchor x in canvas px (meaning depends on align). */
+  cx: number
+  /** Vertical center of the text block in canvas px. */
+  cy: number
+  align: 'left' | 'center' | 'right'
+  maxWidth: number
+  scale: number
+  style: TextStyleCore
+}
+
+/** Shared text painter used by both subtitles and free-floating labels. */
+function paintText(ctx: Ctx, o: PaintTextOpts) {
+  const { style, scale } = o
+  const fontSize = style.fontSize * scale
+  ctx.save()
+  setFont(ctx, style, fontSize)
   ctx.textBaseline = 'middle'
 
-  const maxWidth = width * 0.9
-  const lines = wrapLines(ctx, sub.text, maxWidth)
+  const lines = wrapLines(ctx, o.text, o.maxWidth)
   const lineHeight = fontSize * 1.25
   const blockH = lines.length * lineHeight
-  const cy = subtitleY(height, style)
+  const cy = o.cy
   const padX = fontSize * 0.4
   const padY = fontSize * 0.2
 
-  const marginX = width * 0.05
-  let textAlign: 'left' | 'center' | 'right' = 'center'
-  let x = width / 2
-  switch (style.positionX) {
-    case 'left':
-      textAlign = 'left'
-      x = marginX
-      break
-    case 'right':
-      textAlign = 'right'
-      x = width - marginX
-      break
-    case 'custom':
-      textAlign = 'center'
-      x = width * style.customX
-      break
-    default:
-      textAlign = 'center'
-      x = width / 2
-  }
+  const textAlign = o.align
+  const x = o.cx
   ctx.textAlign = textAlign
 
   if (style.background) {
@@ -176,6 +171,80 @@ export function drawSubtitle(ctx: Ctx, input: RenderInputs) {
     }
   }
   ctx.restore()
+}
+
+export function drawSubtitle(ctx: Ctx, input: RenderInputs) {
+  const sub = findActive(input.subtitles, input.time)
+  if (!sub || !sub.text.trim()) return
+
+  const { width, height, style } = input
+  const scale = Math.min(width, height) / 720
+  const cy = subtitleY(height, style)
+  const marginX = width * 0.05
+
+  let align: 'left' | 'center' | 'right' = 'center'
+  let x = width / 2
+  switch (style.positionX) {
+    case 'left':
+      align = 'left'
+      x = marginX
+      break
+    case 'right':
+      align = 'right'
+      x = width - marginX
+      break
+    case 'custom':
+      align = 'center'
+      x = width * style.customX
+      break
+    default:
+      align = 'center'
+      x = width / 2
+  }
+
+  paintText(ctx, { text: sub.text, cx: x, cy, align, maxWidth: width * 0.9, scale, style })
+}
+
+export function drawLabels(ctx: Ctx, input: RenderInputs) {
+  const { width, height, labels } = input
+  if (!labels?.length) return
+  const scale = Math.min(width, height) / 720
+  for (const label of labels) {
+    if (!label.text.trim()) continue
+    paintText(ctx, {
+      text: label.text,
+      cx: label.x * width,
+      cy: label.y * height,
+      align: 'center',
+      maxWidth: Infinity,
+      scale,
+      style: label,
+    })
+  }
+}
+
+/**
+ * Bounding box of a label's text block in canvas pixels, used to position the
+ * draggable hit target in the preview overlay. Mirrors paintText's metrics.
+ */
+export function measureLabelBox(
+  ctx: Ctx,
+  label: TextLabel,
+  width: number,
+  height: number,
+): { w: number; h: number } {
+  const scale = Math.min(width, height) / 720
+  const fontSize = label.fontSize * scale
+  ctx.save()
+  setFont(ctx, label, fontSize)
+  const lines = wrapLines(ctx, label.text || ' ', Infinity)
+  let maxW = 0
+  for (const l of lines) maxW = Math.max(maxW, ctx.measureText(l || ' ').width)
+  ctx.restore()
+  const lineHeight = fontSize * 1.25
+  const padX = fontSize * 0.4
+  const padY = fontSize * 0.2
+  return { w: maxW + padX * 2, h: lines.length * lineHeight + padY * 2 }
 }
 
 export function drawWatermark(ctx: Ctx, input: RenderInputs) {
@@ -317,6 +386,7 @@ export function renderFrame(ctx: Ctx, input: RenderInputs, clear = true) {
   if (clear) ctx.clearRect(0, 0, input.width, input.height)
   drawWatermark(ctx, input)
   drawSubtitle(ctx, input)
+  drawLabels(ctx, input)
 }
 
 export function loadWatermarkImage(dataUrl: string | null): Promise<HTMLImageElement | null> {

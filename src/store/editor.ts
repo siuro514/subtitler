@@ -1,12 +1,14 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import {
+  DEFAULT_LABEL_STYLE,
   DEFAULT_STYLE,
   DEFAULT_WATERMARK,
   type CustomFont,
   type ProjectSnapshot,
   type Subtitle,
   type SubtitleStyle,
+  type TextLabel,
   type VideoMeta,
   type Watermark,
 } from '@/types'
@@ -19,6 +21,7 @@ interface HistoryEntry {
   style: SubtitleStyle
   watermark: Watermark
   customFonts: CustomFont[]
+  labels: TextLabel[]
 }
 
 const MAX_HISTORY = 50
@@ -36,6 +39,8 @@ interface EditorState {
   exportProgress: number | null
   hasUnsupportedBrowser: boolean
   customFonts: CustomFont[]
+  labels: TextLabel[]
+  selectedLabelId: string | null
   past: HistoryEntry[]
   future: HistoryEntry[]
 
@@ -51,6 +56,10 @@ interface EditorState {
   setStyle: (patch: Partial<SubtitleStyle>) => void
   setWatermark: (patch: Partial<Watermark>) => void
   applySettings: (patch: { style?: Partial<SubtitleStyle>; watermark?: Partial<Watermark> }) => void
+  addLabel: (x?: number, y?: number, text?: string) => string
+  updateLabel: (id: string, patch: Partial<TextLabel>) => void
+  removeLabel: (id: string) => void
+  selectLabel: (id: string | null) => void
   setExportProgress: (p: number | null) => void
   addCustomFont: (family: string, data: ArrayBuffer) => Promise<void>
   removeCustomFont: (id: string) => void
@@ -66,12 +75,14 @@ function snapshotHistory(s: {
   style: SubtitleStyle
   watermark: Watermark
   customFonts: CustomFont[]
+  labels: TextLabel[]
 }): HistoryEntry {
   return {
     subtitles: s.subtitles,
     style: s.style,
     watermark: s.watermark,
     customFonts: s.customFonts,
+    labels: s.labels,
   }
 }
 
@@ -90,6 +101,8 @@ export const useEditor = create<EditorState>()(
     hasUnsupportedBrowser:
       typeof window !== 'undefined' && !('VideoEncoder' in window),
     customFonts: [],
+    labels: [],
+    selectedLabelId: null,
     past: [],
     future: [],
 
@@ -111,6 +124,8 @@ export const useEditor = create<EditorState>()(
         isPlaying: false,
         subtitles: [],
         selectedSubtitleId: null,
+        labels: [],
+        selectedLabelId: null,
       })
     },
 
@@ -192,6 +207,31 @@ export const useEditor = create<EditorState>()(
       })
     },
 
+    addLabel: (x = 0.5, y = 0.5, text = '文字') => {
+      get().pushHistory()
+      const id = uid()
+      const label: TextLabel = { ...DEFAULT_LABEL_STYLE, id, text, x, y }
+      set((s) => ({ labels: [...s.labels, label], selectedLabelId: id }))
+      return id
+    },
+
+    // No history push here: drag emits many updates per gesture. Callers that
+    // start a discrete edit (drag start, style change) push history themselves.
+    updateLabel: (id, patch) =>
+      set((s) => ({
+        labels: s.labels.map((l) => (l.id === id ? { ...l, ...patch } : l)),
+      })),
+
+    removeLabel: (id) => {
+      get().pushHistory()
+      set((s) => ({
+        labels: s.labels.filter((l) => l.id !== id),
+        selectedLabelId: s.selectedLabelId === id ? null : s.selectedLabelId,
+      }))
+    },
+
+    selectLabel: (id) => set({ selectedLabelId: id }),
+
     pushHistory: () => {
       const s = get()
       const entry = snapshotHistory(s)
@@ -257,6 +297,8 @@ export const useEditor = create<EditorState>()(
         style: { ...DEFAULT_STYLE, ...snap.style },
         watermark: { ...DEFAULT_WATERMARK, ...snap.watermark },
         customFonts: fonts,
+        labels: snap.labels ?? [],
+        selectedLabelId: null,
       })
     },
 
@@ -269,6 +311,7 @@ export const useEditor = create<EditorState>()(
         style: s.style,
         watermark: s.watermark,
         customFonts: s.customFonts,
+        labels: s.labels,
       }
     },
   })),

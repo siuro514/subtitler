@@ -26,6 +26,7 @@ export function ExportButton() {
   const subtitles = useEditor((s) => s.subtitles)
   const style = useEditor((s) => s.style)
   const watermark = useEditor((s) => s.watermark)
+  const labels = useEditor((s) => s.labels)
 
   const [open, setOpen] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -56,6 +57,7 @@ export function ExportButton() {
         subtitles,
         style,
         watermark,
+        labels,
         signal: ac.signal,
         onProgress: (p, s) => {
           setProgress(p)
@@ -85,7 +87,8 @@ export function ExportButton() {
     setOpen(false)
   }
 
-  const disabled = !videoBlob || subtitles.length === 0 && !watermark.imageDataUrl
+  const disabled =
+    !videoBlob || (subtitles.length === 0 && !watermark.imageDataUrl && labels.length === 0)
 
   return (
     <>
@@ -99,7 +102,7 @@ export function ExportButton() {
       </button>
       {disabled && (
         <p className="mt-2 text-[10px] text-zinc-500">
-          需要先有字幕或浮水印
+          需要先有字幕、浮水印或文字標籤
         </p>
       )}
 
