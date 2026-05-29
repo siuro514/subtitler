@@ -2,13 +2,14 @@ import { Muxer, ArrayBufferTarget } from 'mp4-muxer'
 import { demuxMp4 } from './demux'
 import { loadWatermarkImage, renderFrame } from './render'
 import { ensureFontLoaded } from './fonts'
-import type { Subtitle, SubtitleStyle, Watermark } from '@/types'
+import type { Subtitle, SubtitleStyle, TextLabel, Watermark } from '@/types'
 
 export interface ExportOptions {
   blob: Blob
   subtitles: Subtitle[]
   style: SubtitleStyle
   watermark: Watermark
+  labels: TextLabel[]
   onProgress?: (p: number, stage: ExportStage) => void
   signal?: AbortSignal
 }
@@ -65,7 +66,7 @@ function abortReason(signal?: AbortSignal): Error {
 }
 
 export async function exportVideo(opts: ExportOptions): Promise<Blob> {
-  const { blob, subtitles, style, watermark, onProgress, signal } = opts
+  const { blob, subtitles, style, watermark, labels, onProgress, signal } = opts
   if (signal?.aborted) throw abortReason(signal)
 
   if (!('VideoEncoder' in window)) throw new Error('瀏覽器不支援 VideoEncoder')
@@ -74,6 +75,11 @@ export async function exportVideo(opts: ExportOptions): Promise<Blob> {
   const allText = subtitles.map((s) => s.text).join(' ')
   if (allText) {
     await ensureFontLoaded(style.fontFamily, style.fontSize, allText)
+  }
+  for (const label of labels) {
+    if (label.text.trim()) {
+      await ensureFontLoaded(label.fontFamily, label.fontSize, label.text)
+    }
   }
   const demux = await demuxMp4(blob)
   if (signal?.aborted) throw abortReason(signal)
@@ -156,6 +162,7 @@ export async function exportVideo(opts: ExportOptions): Promise<Blob> {
             style,
             watermark,
             watermarkImage: watermarkImg,
+            labels,
           },
           false,
         )

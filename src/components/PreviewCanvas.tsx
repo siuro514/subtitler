@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { type PointerEvent as ReactPointerEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Pause, Play } from 'lucide-react'
 import { useEditor } from '@/store/editor'
-import { formatTime } from '@/lib/utils'
-import { loadWatermarkImage, renderFrame } from '@/lib/render'
+import { clamp, cn, formatTime } from '@/lib/utils'
+import { loadWatermarkImage, measureLabelBox, renderFrame } from '@/lib/render'
 import { ensureFontLoaded } from '@/lib/fonts'
 
 export function PreviewCanvas() {
@@ -16,12 +16,27 @@ export function PreviewCanvas() {
   const subtitles = useEditor((s) => s.subtitles)
   const style = useEditor((s) => s.style)
   const watermark = useEditor((s) => s.watermark)
+  const labels = useEditor((s) => s.labels)
+  const selectedLabelId = useEditor((s) => s.selectedLabelId)
+  const selectLabel = useEditor((s) => s.selectLabel)
+  const updateLabel = useEditor((s) => s.updateLabel)
+  const pushHistory = useEditor((s) => s.pushHistory)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const frameRef = useRef<HTMLDivElement>(null)
   const watermarkImgRef = useRef<HTMLImageElement | null>(null)
+  const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null)
+  const dragRef = useRef<{ id: string; grabDx: number; grabDy: number } | null>(null)
   const [boxSize, setBoxSize] = useState({ w: 0, h: 0 })
+
+  function getMeasureCtx() {
+    if (!measureCtxRef.current) {
+      measureCtxRef.current = document.createElement('canvas').getContext('2d')
+    }
+    return measureCtxRef.current
+  }
 
   function drawNow() {
     const canvas = canvasRef.current
@@ -39,6 +54,7 @@ export function PreviewCanvas() {
       style,
       watermark,
       watermarkImage: watermarkImgRef.current,
+      labels,
     })
   }
 
@@ -160,7 +176,7 @@ export function PreviewCanvas() {
   useEffect(() => {
     drawNow()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subtitles, style, watermark, currentTime])
+  }, [subtitles, style, watermark, labels, currentTime])
 
   useEffect(() => {
     let cancelled = false
@@ -174,6 +190,21 @@ export function PreviewCanvas() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [style.fontFamily, style.fontSize, subtitles])
+
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all(
+      labels
+        .filter((l) => l.text.trim())
+        .map((l) => ensureFontLoaded(l.fontFamily, l.fontSize, l.text)),
+    ).then(() => {
+      if (!cancelled) drawNow()
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [labels])
 
   if (!videoUrl || !meta) return null
 
@@ -189,6 +220,49 @@ export function PreviewCanvas() {
     }
   }
 
+  const scaleDisp = meta.width > 0 ? dw / meta.width : 0
+
+  function labelRect(l: (typeof labels)[number]) {
+    const mctx = getMeasureCtx()
+    let w = 0
+    let h = 0
+    if (mctx && scaleDisp > 0) {
+      const b = measureLabelBox(mctx, l, meta!.width, meta!.height)
+      w = b.w * scaleDisp
+      h = b.h * scaleDisp
+    }
+    return { left: l.x * dw - w / 2, top: l.y * dh - h / 2, width: w, height: h }
+  }
+
+  function onLabelPointerDown(e: ReactPointerEvent, l: (typeof labels)[number]) {
+    e.stopPropagation()
+    e.preventDefault()
+    selectLabel(l.id)
+    pushHistory() // one history entry per drag gesture
+    const rect = frameRef.current!.getBoundingClientRect()
+    dragRef.current = {
+      id: l.id,
+      grabDx: e.clientX - rect.left - l.x * dw,
+      grabDy: e.clientY - rect.top - l.y * dh,
+    }
+    ;(e.target as Element).setPointerCapture(e.pointerId)
+  }
+
+  function onLabelPointerMove(e: ReactPointerEvent) {
+    const d = dragRef.current
+    if (!d) return
+    const rect = frameRef.current!.getBoundingClientRect()
+    const cxD = e.clientX - rect.left - d.grabDx
+    const cyD = e.clientY - rect.top - d.grabDy
+    updateLabel(d.id, { x: clamp(cxD / dw, 0, 1), y: clamp(cyD / dh, 0, 1) })
+  }
+
+  function onLabelPointerUp(e: ReactPointerEvent) {
+    if (!dragRef.current) return
+    ;(e.target as Element).releasePointerCapture?.(e.pointerId)
+    dragRef.current = null
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div
@@ -196,7 +270,12 @@ export function PreviewCanvas() {
         className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black"
       >
         {dw > 0 && dh > 0 && (
-          <div className="relative" style={{ width: dw, height: dh }}>
+          <div
+            ref={frameRef}
+            className="relative"
+            style={{ width: dw, height: dh }}
+            onPointerDown={() => selectLabel(null)}
+          >
             <video
               ref={videoRef}
               src={videoUrl}
@@ -211,6 +290,33 @@ export function PreviewCanvas() {
               ref={canvasRef}
               className="pointer-events-none absolute inset-0 h-full w-full"
             />
+            {labels.map((l) => {
+              const r = labelRect(l)
+              const selected = l.id === selectedLabelId
+              return (
+                <div
+                  key={l.id}
+                  role="button"
+                  aria-label={`文字標籤：${l.text}`}
+                  onPointerDown={(e) => onLabelPointerDown(e, l)}
+                  onPointerMove={onLabelPointerMove}
+                  onPointerUp={onLabelPointerUp}
+                  className={cn(
+                    'absolute cursor-move rounded-sm',
+                    selected
+                      ? 'ring-2 ring-sky-400'
+                      : 'ring-1 ring-transparent hover:ring-sky-400/40',
+                  )}
+                  style={{
+                    left: r.left,
+                    top: r.top,
+                    width: r.width,
+                    height: r.height,
+                    touchAction: 'none',
+                  }}
+                />
+              )
+            })}
           </div>
         )}
       </div>
