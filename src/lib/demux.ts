@@ -97,22 +97,26 @@ export async function demuxMp4(blob: Blob): Promise<DemuxResult> {
     const audioSamples: MP4Sample[] = []
     let videoTrack: MP4TrackInfo | null = null
     let audioTrack: MP4TrackInfo | null = null
-    let expectedVideo = 0
-    let expectedAudio = 0
     let videoDescription: Uint8Array | undefined
     let audioDescription: Uint8Array | undefined
+    let ready = false
+    let failed = false
 
-    file.onError = (e) => reject(new Error('MP4 demux error: ' + e))
+    const fail = (err: Error) => {
+      if (failed) return
+      failed = true
+      reject(err)
+    }
+
+    file.onError = (e) => fail(new Error('MP4 demux error: ' + e))
 
     file.onReady = (info) => {
       if (info.videoTracks.length === 0) {
-        reject(new Error('影片裡沒有 video track'))
+        fail(new Error('影片裡沒有 video track'))
         return
       }
       videoTrack = info.videoTracks[0]
       audioTrack = info.audioTracks[0] ?? null
-      expectedVideo = videoTrack.nb_samples
-      expectedAudio = audioTrack?.nb_samples ?? 0
 
       try {
         videoDescription = extractCodecDescription(
@@ -124,7 +128,7 @@ export async function demuxMp4(blob: Blob): Promise<DemuxResult> {
           )
         }
       } catch (err) {
-        reject(err instanceof Error ? err : new Error(String(err)))
+        fail(err instanceof Error ? err : new Error(String(err)))
         return
       }
 
@@ -132,34 +136,16 @@ export async function demuxMp4(blob: Blob): Promise<DemuxResult> {
       if (audioTrack) {
         file.setExtractionOptions(audioTrack.id, null, { nbSamples: 200 })
       }
+      ready = true
       file.start()
     }
 
+    // mp4box delivers samples in batches during start()/flush(); just accumulate.
     file.onSamples = (id, _user, samples) => {
       if (videoTrack && id === videoTrack.id) {
         videoSamples.push(...samples)
       } else if (audioTrack && id === audioTrack.id) {
         audioSamples.push(...samples)
-      }
-      const vDone = videoTrack ? videoSamples.length >= expectedVideo : true
-      const aDone = audioTrack ? audioSamples.length >= expectedAudio : true
-      if (vDone && aDone && videoTrack) {
-        const duration = videoTrack.duration / videoTrack.timescale
-        resolve({
-          width: videoTrack.video?.width ?? 0,
-          height: videoTrack.video?.height ?? 0,
-          duration,
-          videoCodec: videoTrack.codec,
-          videoDescription,
-          videoTimescale: videoTrack.timescale,
-          videoSamples,
-          audioCodec: audioTrack?.codec ?? null,
-          audioDescription,
-          audioTimescale: audioTrack?.timescale ?? 0,
-          audioSampleRate: audioTrack?.audio?.sample_rate ?? 0,
-          audioChannels: audioTrack?.audio?.channel_count ?? 0,
-          audioSamples,
-        })
       }
     }
 
@@ -167,5 +153,31 @@ export async function demuxMp4(blob: Blob): Promise<DemuxResult> {
     ab.fileStart = 0
     file.appendBuffer(ab)
     file.flush()
+
+    // After flush() every sample of the appended buffer has been emitted, so
+    // resolving here avoids relying on moov-reported sample counts (which are 0
+    // for fragmented MP4s and would otherwise drop the audio track).
+    if (failed) return
+    if (!ready || !videoTrack) {
+      fail(new Error('無法解析這個 MP4（缺少 moov？）'))
+      return
+    }
+    const vt = videoTrack as MP4TrackInfo
+    const at = audioTrack as MP4TrackInfo | null
+    resolve({
+      width: vt.video?.width ?? 0,
+      height: vt.video?.height ?? 0,
+      duration: vt.duration / vt.timescale,
+      videoCodec: vt.codec,
+      videoDescription,
+      videoTimescale: vt.timescale,
+      videoSamples,
+      audioCodec: at && audioSamples.length > 0 ? at.codec : null,
+      audioDescription,
+      audioTimescale: at?.timescale ?? 0,
+      audioSampleRate: at?.audio?.sample_rate ?? 0,
+      audioChannels: at?.audio?.channel_count ?? 0,
+      audioSamples,
+    })
   })
 }
