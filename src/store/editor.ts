@@ -50,6 +50,7 @@ interface EditorState {
   selectSubtitle: (id: string | null) => void
   setStyle: (patch: Partial<SubtitleStyle>) => void
   setWatermark: (patch: Partial<Watermark>) => void
+  applySettings: (patch: { style?: Partial<SubtitleStyle>; watermark?: Partial<Watermark> }) => void
   setExportProgress: (p: number | null) => void
   addCustomFont: (family: string, data: ArrayBuffer) => Promise<void>
   removeCustomFont: (id: string) => void
@@ -171,6 +172,25 @@ export const useEditor = create<EditorState>()(
       })),
 
     setWatermark: (patch) => set((s) => ({ watermark: { ...s.watermark, ...patch } })),
+
+    applySettings: (patch) => {
+      if (!patch.style && !patch.watermark) return
+      get().pushHistory()
+      set((s) => {
+        const style = patch.style
+          ? {
+              ...s.style,
+              ...patch.style,
+              customY: clamp(patch.style.customY ?? s.style.customY, 0, 1),
+              customX: clamp(patch.style.customX ?? s.style.customX, 0, 1),
+            }
+          : s.style
+        const watermark = patch.watermark
+          ? { ...s.watermark, ...patch.watermark }
+          : s.watermark
+        return { style, watermark }
+      })
+    },
 
     pushHistory: () => {
       const s = get()
