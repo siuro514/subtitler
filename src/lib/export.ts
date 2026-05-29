@@ -225,6 +225,20 @@ export async function exportVideo(opts: ExportOptions): Promise<Blob> {
   if (signal?.aborted) throw abortReason(signal)
 
   if (audioPlan?.mode === 'passthrough') {
+    // Only attach a decoderConfig when we actually parsed the AudioSpecificConfig.
+    // If we passed `description: undefined`, mp4-muxer's Object.assign would clobber
+    // the valid AAC config it auto-generates from sampleRate/channels, writing a
+    // zero-length esds and producing silent audio.
+    const meta: EncodedAudioChunkMetadata | undefined = demux.audioDescription
+      ? {
+          decoderConfig: {
+            codec: demux.audioCodec!,
+            sampleRate: demux.audioSampleRate,
+            numberOfChannels: demux.audioChannels,
+            description: demux.audioDescription,
+          },
+        }
+      : undefined
     for (const sample of demux.audioSamples) {
       const chunk = new EncodedAudioChunk({
         type: sample.is_sync ? 'key' : 'delta',
@@ -232,14 +246,6 @@ export async function exportVideo(opts: ExportOptions): Promise<Blob> {
         duration: (sample.duration * 1_000_000) / sample.timescale,
         data: sample.data,
       })
-      const meta: EncodedAudioChunkMetadata = {
-        decoderConfig: {
-          codec: demux.audioCodec!,
-          sampleRate: demux.audioSampleRate,
-          numberOfChannels: demux.audioChannels,
-          description: demux.audioDescription,
-        },
-      }
       muxer.addAudioChunk(chunk, meta)
     }
   } else if (audioPlan?.mode === 'transcode') {
