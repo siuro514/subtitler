@@ -6,6 +6,7 @@ import { PreviewCanvas } from './components/PreviewCanvas'
 import { SubtitleStylePanel } from './components/SubtitleStylePanel'
 import { SubtitleImporter } from './components/SubtitleImporter'
 import { WatermarkPanel } from './components/WatermarkPanel'
+import { SettingsIO } from './components/SettingsIO'
 import { Timeline } from './components/Timeline/Timeline'
 import { ExportButton } from './components/ExportButton'
 import { SrtExportButton } from './components/SrtExportButton'
@@ -141,6 +142,7 @@ export function App() {
               <LyricsAligner />
               <SubtitleStylePanel />
               <WatermarkPanel />
+              <SettingsIO />
             </aside>
             <div className="flex min-w-0 flex-1 flex-col">
               <div className="min-h-0 flex-1 overflow-hidden">
