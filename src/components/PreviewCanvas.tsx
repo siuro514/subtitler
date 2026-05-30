@@ -20,6 +20,7 @@ export function PreviewCanvas() {
   const activeTrackId = useEditor((s) => s.activeTrackId)
   const selectTrack = useEditor((s) => s.selectTrack)
   const updateTrack = useEditor((s) => s.updateTrack)
+  const updateCue = useEditor((s) => s.updateCue)
   const pushHistory = useEditor((s) => s.pushHistory)
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -35,6 +36,8 @@ export function PreviewCanvas() {
     | null
   >(null)
   const [boxSize, setBoxSize] = useState({ w: 0, h: 0 })
+  const [editing, setEditing] = useState(false)
+  const editOriginalRef = useRef('')
 
   function getMeasureCtx() {
     if (!measureCtxRef.current) {
@@ -255,6 +258,7 @@ export function PreviewCanvas() {
   }
   const activeTrack = tracks.find((t) => t.id === activeTrackId) ?? null
   const activeBox = boxes.find((b) => b.trackId === activeTrackId) ?? null
+  const editCue = activeTrack ? activeCue(activeTrack.cues, currentTime) : null
 
   function onMoveDown(e: ReactPointerEvent) {
     if (!activeTrack || !activeBox) return
@@ -338,6 +342,18 @@ export function PreviewCanvas() {
     selectTrack(trackId)
   }
 
+  function startEdit() {
+    if (!activeTrack || !editCue) return
+    editOriginalRef.current = editCue.text
+    pushHistory()
+    setEditing(true)
+  }
+
+  function cancelEdit() {
+    if (activeTrack && editCue) updateCue(activeTrack.id, editCue.id, { text: editOriginalRef.current })
+    setEditing(false)
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div
@@ -379,7 +395,7 @@ export function PreviewCanvas() {
                   onPointerDown={(e) => onSelectTrackDown(e, b.trackId)}
                 />
               ))}
-            {activeBox && (
+            {activeBox && !editing && (
               <div
                 className="absolute"
                 style={{
@@ -397,6 +413,8 @@ export function PreviewCanvas() {
                   onPointerDown={onMoveDown}
                   onPointerMove={onHandleMove}
                   onPointerUp={onHandleUp}
+                  onDoubleClick={startEdit}
+                  title="雙擊編輯文字"
                 />
                 {/* scale handle (bottom-right corner) */}
                 <div
@@ -416,6 +434,32 @@ export function PreviewCanvas() {
                 />
                 <div className="pointer-events-none absolute -top-7 left-1/2 h-7 w-px -translate-x-1/2 bg-emerald-400/60" />
               </div>
+            )}
+            {activeBox && editing && editCue && (
+              <textarea
+                autoFocus
+                className="absolute z-10 resize-none rounded-sm border border-sky-400 bg-zinc-900/95 px-2 py-1 text-center text-sm text-white outline-none"
+                style={{
+                  left: activeBox.cxD - Math.max(activeBox.wD, 180) / 2,
+                  top: activeBox.cyD - Math.max(activeBox.hD, 56) / 2,
+                  width: Math.max(activeBox.wD, 180),
+                  height: Math.max(activeBox.hD, 56),
+                }}
+                value={editCue.text}
+                onFocusCapture={(e) => e.currentTarget.select()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onChange={(e) => updateCue(activeTrack!.id, editCue.id, { text: e.target.value })}
+                onBlur={() => setEditing(false)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    setEditing(false)
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault()
+                    cancelEdit()
+                  }
+                }}
+              />
             )}
           </div>
         )}

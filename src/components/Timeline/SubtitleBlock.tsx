@@ -15,10 +15,21 @@ type DragMode = 'move' | 'resize-left' | 'resize-right'
 
 const MIN_DURATION = 0.1
 
+/** Track id of the timeline lane under a screen point, if any. */
+function trackIdAtPoint(x: number, y: number): string | null {
+  for (const el of document.elementsFromPoint(x, y)) {
+    const id = (el as HTMLElement).dataset?.trackId
+    if (id) return id
+  }
+  return null
+}
+
 export function SubtitleBlock({ trackId, subtitle, pxPerSec, duration, selected }: Props) {
   const updateCue = useEditor((s) => s.updateCue)
   const selectCue = useEditor((s) => s.selectCue)
   const selectTrack = useEditor((s) => s.selectTrack)
+  const setDropTarget = useEditor((s) => s.setDropTarget)
+  const moveCueToTrack = useEditor((s) => s.moveCueToTrack)
   const pushHistory = useEditor((s) => s.pushHistory)
   const editingRef = useRef<HTMLDivElement>(null)
   const [editing, setEditing] = useState(false)
@@ -45,6 +56,8 @@ export function SubtitleBlock({ trackId, subtitle, pxPerSec, duration, selected 
       if (mode === 'move') {
         const newStart = clamp(origStart + dx, 0, duration - origDur)
         updateCue(trackId, subtitle.id, { start: newStart, end: newStart + origDur })
+        const tgt = trackIdAtPoint(ev.clientX, ev.clientY)
+        setDropTarget(tgt && tgt !== trackId ? tgt : null)
       } else if (mode === 'resize-left') {
         const newStart = clamp(origStart + dx, 0, origEnd - MIN_DURATION)
         updateCue(trackId, subtitle.id, { start: newStart })
@@ -59,17 +72,16 @@ export function SubtitleBlock({ trackId, subtitle, pxPerSec, duration, selected 
       target.removeEventListener('pointermove', onMove)
       target.removeEventListener('pointerup', onUp)
       target.removeEventListener('pointercancel', onUp)
+      if (mode === 'move') {
+        const dropId = useEditor.getState().dropTargetTrackId
+        if (dropId && dropId !== trackId) moveCueToTrack(trackId, dropId, subtitle.id)
+        setDropTarget(null)
+      }
     }
 
     target.addEventListener('pointermove', onMove)
     target.addEventListener('pointerup', onUp)
     target.addEventListener('pointercancel', onUp)
-  }
-
-  function onClick(e: React.MouseEvent) {
-    e.stopPropagation()
-    selectTrack(trackId)
-    selectCue(subtitle.id)
   }
 
   function onDoubleClick(e: React.MouseEvent) {
@@ -106,7 +118,6 @@ export function SubtitleBlock({ trackId, subtitle, pxPerSec, duration, selected 
           : 'border-zinc-600 bg-zinc-800/70 hover:bg-zinc-700/70')
       }
       style={{ left, width }}
-      onClick={onClick}
       onDoubleClick={onDoubleClick}
       onPointerDown={(e) => startDrag('move', e)}
     >

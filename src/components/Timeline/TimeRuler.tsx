@@ -1,6 +1,33 @@
-import { formatTime } from '@/lib/utils'
+import { useRef } from 'react'
+import { useEditor } from '@/store/editor'
+import { clamp, formatTime } from '@/lib/utils'
 
 export function TimeRuler({ duration, pxPerSec }: { duration: number; pxPerSec: number }) {
+  const setCurrentTime = useEditor((s) => s.setCurrentTime)
+  const ref = useRef<HTMLDivElement>(null)
+  const scrubbing = useRef(false)
+
+  function seekTo(clientX: number) {
+    const el = ref.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setCurrentTime(clamp((clientX - rect.left) / pxPerSec, 0, duration))
+  }
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    e.preventDefault()
+    scrubbing.current = true
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    seekTo(e.clientX)
+  }
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (scrubbing.current) seekTo(e.clientX)
+  }
+  function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    scrubbing.current = false
+    ;(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId)
+  }
+
   const majorStep = pxPerSec >= 100 ? 1 : pxPerSec >= 40 ? 5 : 10
   const minorStep = majorStep / 5
   const total = Math.ceil(duration / minorStep)
@@ -12,7 +39,14 @@ export function TimeRuler({ duration, pxPerSec }: { duration: number; pxPerSec: 
     ticks.push({ t, major })
   }
   return (
-    <div className="relative h-7 border-b border-border bg-zinc-900 text-zinc-500">
+    <div
+      ref={ref}
+      className="relative h-7 cursor-pointer select-none border-b border-border bg-zinc-900 text-zinc-500"
+      style={{ touchAction: 'none' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
       {ticks.map((tick, i) => (
         <div
           key={i}

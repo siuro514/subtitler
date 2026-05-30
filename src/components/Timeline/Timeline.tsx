@@ -18,6 +18,7 @@ export function Timeline() {
   const removeCue = useEditor((s) => s.removeCue)
   const addTrack = useEditor((s) => s.addTrack)
   const selectedCueId = useEditor((s) => s.selectedCueId)
+  const dropTargetTrackId = useEditor((s) => s.dropTargetTrackId)
   const [pxPerSec, setPxPerSec] = useState(100)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -134,9 +135,11 @@ export function Timeline() {
             {tracks.map((track) => (
               <div
                 key={track.id}
+                data-track-id={track.id}
                 className={cn(
                   'relative border-b border-border/40',
                   track.id === activeTrackId && 'bg-sky-500/[0.04]',
+                  track.id === dropTargetTrackId && 'bg-sky-500/20 ring-1 ring-inset ring-sky-400',
                 )}
                 style={{ height: LANE_H }}
               >
