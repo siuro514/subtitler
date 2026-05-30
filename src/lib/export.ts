@@ -2,14 +2,12 @@ import { Muxer, ArrayBufferTarget } from 'mp4-muxer'
 import { demuxMp4 } from './demux'
 import { loadWatermarkImage, renderFrame } from './render'
 import { ensureFontLoaded } from './fonts'
-import type { Subtitle, SubtitleStyle, TextLabel, Watermark } from '@/types'
+import type { Track, Watermark } from '@/types'
 
 export interface ExportOptions {
   blob: Blob
-  subtitles: Subtitle[]
-  style: SubtitleStyle
+  tracks: Track[]
   watermark: Watermark
-  labels: TextLabel[]
   onProgress?: (p: number, stage: ExportStage) => void
   signal?: AbortSignal
 }
@@ -66,19 +64,16 @@ function abortReason(signal?: AbortSignal): Error {
 }
 
 export async function exportVideo(opts: ExportOptions): Promise<Blob> {
-  const { blob, subtitles, style, watermark, labels, onProgress, signal } = opts
+  const { blob, tracks, watermark, onProgress, signal } = opts
   if (signal?.aborted) throw abortReason(signal)
 
   if (!('VideoEncoder' in window)) throw new Error('瀏覽器不支援 VideoEncoder')
 
   onProgress?.(0, 'demux')
-  const allText = subtitles.map((s) => s.text).join(' ')
-  if (allText) {
-    await ensureFontLoaded(style.fontFamily, style.fontSize, allText)
-  }
-  for (const label of labels) {
-    if (label.text.trim()) {
-      await ensureFontLoaded(label.fontFamily, label.fontSize, label.text)
+  for (const track of tracks) {
+    const text = track.cues.map((c) => c.text).join(' ')
+    if (text.trim()) {
+      await ensureFontLoaded(track.fontFamily, track.fontSize, text)
     }
   }
   const demux = await demuxMp4(blob)
@@ -158,11 +153,9 @@ export async function exportVideo(opts: ExportOptions): Promise<Blob> {
             width: demux.width,
             height: demux.height,
             time: (frame.timestamp ?? 0) / 1_000_000,
-            subtitles,
-            style,
+            tracks,
             watermark,
             watermarkImage: watermarkImg,
-            labels,
           },
           false,
         )

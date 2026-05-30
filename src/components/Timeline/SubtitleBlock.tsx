@@ -4,6 +4,7 @@ import type { Subtitle } from '@/types'
 import { clamp } from '@/lib/utils'
 
 interface Props {
+  trackId: string
   subtitle: Subtitle
   pxPerSec: number
   duration: number
@@ -14,10 +15,10 @@ type DragMode = 'move' | 'resize-left' | 'resize-right'
 
 const MIN_DURATION = 0.1
 
-export function SubtitleBlock({ subtitle, pxPerSec, duration, selected }: Props) {
-  const updateSubtitle = useEditor((s) => s.updateSubtitle)
-  const selectSubtitle = useEditor((s) => s.selectSubtitle)
-  const setCurrentTime = useEditor((s) => s.setCurrentTime)
+export function SubtitleBlock({ trackId, subtitle, pxPerSec, duration, selected }: Props) {
+  const updateCue = useEditor((s) => s.updateCue)
+  const selectCue = useEditor((s) => s.selectCue)
+  const selectTrack = useEditor((s) => s.selectTrack)
   const pushHistory = useEditor((s) => s.pushHistory)
   const editingRef = useRef<HTMLDivElement>(null)
   const [editing, setEditing] = useState(false)
@@ -29,7 +30,8 @@ export function SubtitleBlock({ subtitle, pxPerSec, duration, selected }: Props)
     if (editing) return
     e.stopPropagation()
     e.preventDefault()
-    selectSubtitle(subtitle.id)
+    selectTrack(trackId)
+    selectCue(subtitle.id)
     pushHistory()
     const startX = e.clientX
     const origStart = subtitle.start
@@ -42,13 +44,13 @@ export function SubtitleBlock({ subtitle, pxPerSec, duration, selected }: Props)
       const dx = (ev.clientX - startX) / pxPerSec
       if (mode === 'move') {
         const newStart = clamp(origStart + dx, 0, duration - origDur)
-        updateSubtitle(subtitle.id, { start: newStart, end: newStart + origDur })
+        updateCue(trackId, subtitle.id, { start: newStart, end: newStart + origDur })
       } else if (mode === 'resize-left') {
         const newStart = clamp(origStart + dx, 0, origEnd - MIN_DURATION)
-        updateSubtitle(subtitle.id, { start: newStart })
+        updateCue(trackId, subtitle.id, { start: newStart })
       } else if (mode === 'resize-right') {
         const newEnd = clamp(origEnd + dx, origStart + MIN_DURATION, duration)
-        updateSubtitle(subtitle.id, { end: newEnd })
+        updateCue(trackId, subtitle.id, { end: newEnd })
       }
     }
 
@@ -66,8 +68,8 @@ export function SubtitleBlock({ subtitle, pxPerSec, duration, selected }: Props)
 
   function onClick(e: React.MouseEvent) {
     e.stopPropagation()
-    selectSubtitle(subtitle.id)
-    setCurrentTime(subtitle.start)
+    selectTrack(trackId)
+    selectCue(subtitle.id)
   }
 
   function onDoubleClick(e: React.MouseEvent) {
@@ -91,7 +93,7 @@ export function SubtitleBlock({ subtitle, pxPerSec, duration, selected }: Props)
     setEditing(false)
     if (text !== subtitle.text) {
       pushHistory()
-      updateSubtitle(subtitle.id, { text })
+      updateCue(trackId, subtitle.id, { text })
     }
   }
 

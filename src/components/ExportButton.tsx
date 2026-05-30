@@ -23,10 +23,8 @@ const STAGE_LABEL: Record<ExportStage, string> = {
 export function ExportButton() {
   const videoBlob = useEditor((s) => s.videoBlob)
   const videoMeta = useEditor((s) => s.videoMeta)
-  const subtitles = useEditor((s) => s.subtitles)
-  const style = useEditor((s) => s.style)
+  const tracks = useEditor((s) => s.tracks)
   const watermark = useEditor((s) => s.watermark)
-  const labels = useEditor((s) => s.labels)
 
   const [open, setOpen] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -54,10 +52,8 @@ export function ExportButton() {
     try {
       const blob = await exportVideo({
         blob: videoBlob,
-        subtitles,
-        style,
+        tracks,
         watermark,
-        labels,
         signal: ac.signal,
         onProgress: (p, s) => {
           setProgress(p)
@@ -87,8 +83,8 @@ export function ExportButton() {
     setOpen(false)
   }
 
-  const disabled =
-    !videoBlob || (subtitles.length === 0 && !watermark.imageDataUrl && labels.length === 0)
+  const hasCues = tracks.some((t) => t.cues.length > 0)
+  const disabled = !videoBlob || (!hasCues && !watermark.imageDataUrl)
 
   return (
     <>
@@ -102,7 +98,7 @@ export function ExportButton() {
       </button>
       {disabled && (
         <p className="mt-2 text-[10px] text-zinc-500">
-          需要先有字幕、浮水印或文字標籤
+          需要先有字幕或浮水印
         </p>
       )}
 

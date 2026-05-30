@@ -1,9 +1,11 @@
 import { type PointerEvent as ReactPointerEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Pause, Play } from 'lucide-react'
-import { useEditor } from '@/store/editor'
-import { clamp, cn, formatTime } from '@/lib/utils'
-import { loadWatermarkImage, measureLabelBox, renderFrame } from '@/lib/render'
+import { activeCue, useEditor } from '@/store/editor'
+import { clamp, formatTime } from '@/lib/utils'
+import { loadWatermarkImage, measureTrackBox, renderFrame, trackAnchor } from '@/lib/render'
 import { ensureFontLoaded } from '@/lib/fonts'
+
+const MOVE_EPS = 0.004
 
 export function PreviewCanvas() {
   const videoUrl = useEditor((s) => s.videoUrl)
@@ -13,13 +15,11 @@ export function PreviewCanvas() {
   const setCurrentTime = useEditor((s) => s.setCurrentTime)
   const currentTime = useEditor((s) => s.currentTime)
 
-  const subtitles = useEditor((s) => s.subtitles)
-  const style = useEditor((s) => s.style)
+  const tracks = useEditor((s) => s.tracks)
   const watermark = useEditor((s) => s.watermark)
-  const labels = useEditor((s) => s.labels)
-  const selectedLabelId = useEditor((s) => s.selectedLabelId)
-  const selectLabel = useEditor((s) => s.selectLabel)
-  const updateLabel = useEditor((s) => s.updateLabel)
+  const activeTrackId = useEditor((s) => s.activeTrackId)
+  const selectTrack = useEditor((s) => s.selectTrack)
+  const updateTrack = useEditor((s) => s.updateTrack)
   const pushHistory = useEditor((s) => s.pushHistory)
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -28,7 +28,12 @@ export function PreviewCanvas() {
   const frameRef = useRef<HTMLDivElement>(null)
   const watermarkImgRef = useRef<HTMLImageElement | null>(null)
   const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null)
-  const dragRef = useRef<{ id: string; grabDx: number; grabDy: number } | null>(null)
+  const dragRef = useRef<
+    | { mode: 'move'; grabDx: number; grabDy: number; startNx: number; startNy: number }
+    | { mode: 'scale'; startDist: number; startFontSize: number }
+    | { mode: 'rotate' }
+    | null
+  >(null)
   const [boxSize, setBoxSize] = useState({ w: 0, h: 0 })
 
   function getMeasureCtx() {
@@ -38,23 +43,25 @@ export function PreviewCanvas() {
     return measureCtxRef.current
   }
 
+  // Reads the latest state from the store so the rAF/rVFC playback loop (set up
+  // once on [meta]) never draws stale tracks.
   function drawNow() {
     const canvas = canvasRef.current
     const v = videoRef.current
-    if (!canvas || !v || !meta) return
-    if (canvas.width !== meta.width) canvas.width = meta.width
-    if (canvas.height !== meta.height) canvas.height = meta.height
+    const st = useEditor.getState()
+    const m = st.videoMeta
+    if (!canvas || !v || !m) return
+    if (canvas.width !== m.width) canvas.width = m.width
+    if (canvas.height !== m.height) canvas.height = m.height
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     renderFrame(ctx, {
-      width: meta.width,
-      height: meta.height,
+      width: m.width,
+      height: m.height,
       time: v.currentTime,
-      subtitles,
-      style,
-      watermark,
+      tracks: st.tracks,
+      watermark: st.watermark,
       watermarkImage: watermarkImgRef.current,
-      labels,
     })
   }
 
@@ -176,27 +183,15 @@ export function PreviewCanvas() {
   useEffect(() => {
     drawNow()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subtitles, style, watermark, labels, currentTime])
-
-  useEffect(() => {
-    let cancelled = false
-    const text = subtitles.map((s) => s.text).join(' ')
-    if (!text) return
-    void ensureFontLoaded(style.fontFamily, style.fontSize, text).then(() => {
-      if (!cancelled) drawNow()
-    })
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [style.fontFamily, style.fontSize, subtitles])
+  }, [tracks, watermark, currentTime])
 
   useEffect(() => {
     let cancelled = false
     void Promise.all(
-      labels
-        .filter((l) => l.text.trim())
-        .map((l) => ensureFontLoaded(l.fontFamily, l.fontSize, l.text)),
+      tracks.map((t) => {
+        const text = t.cues.map((c) => c.text).join(' ')
+        return text.trim() ? ensureFontLoaded(t.fontFamily, t.fontSize, text) : Promise.resolve()
+      }),
     ).then(() => {
       if (!cancelled) drawNow()
     })
@@ -204,7 +199,7 @@ export function PreviewCanvas() {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [labels])
+  }, [tracks])
 
   if (!videoUrl || !meta) return null
 
@@ -222,45 +217,125 @@ export function PreviewCanvas() {
 
   const scaleDisp = meta.width > 0 ? dw / meta.width : 0
 
-  function labelRect(l: (typeof labels)[number]) {
-    const mctx = getMeasureCtx()
-    let w = 0
-    let h = 0
-    if (mctx && scaleDisp > 0) {
-      const b = measureLabelBox(mctx, l, meta!.width, meta!.height)
-      w = b.w * scaleDisp
-      h = b.h * scaleDisp
-    }
-    return { left: l.x * dw - w / 2, top: l.y * dh - h / 2, width: w, height: h }
+  // On-screen box for every track's current cue, so any card can be clicked to
+  // select its track; the active track's box also gets the edit handles.
+  interface Box {
+    trackId: string
+    cxD: number
+    cyD: number
+    wD: number
+    hD: number
+    rotation: number
   }
+  const boxes: Box[] = []
+  if (scaleDisp > 0) {
+    const mctx = getMeasureCtx()
+    if (mctx) {
+      for (const track of tracks) {
+        const c = activeCue(track.cues, currentTime)
+        if (!c || !c.text.trim()) continue
+        const box = measureTrackBox(mctx, track, c.text, meta.width, meta.height)
+        const anchor = trackAnchor(track, meta.width, meta.height)
+        const blockCenterX =
+          anchor.align === 'left'
+            ? anchor.cx + box.w / 2
+            : anchor.align === 'right'
+              ? anchor.cx - box.w / 2
+              : anchor.cx
+        boxes.push({
+          trackId: track.id,
+          cxD: blockCenterX * scaleDisp,
+          cyD: anchor.cy * scaleDisp,
+          wD: box.w * scaleDisp,
+          hD: box.h * scaleDisp,
+          rotation: track.rotation,
+        })
+      }
+    }
+  }
+  const activeTrack = tracks.find((t) => t.id === activeTrackId) ?? null
+  const activeBox = boxes.find((b) => b.trackId === activeTrackId) ?? null
 
-  function onLabelPointerDown(e: ReactPointerEvent, l: (typeof labels)[number]) {
+  function onMoveDown(e: ReactPointerEvent) {
+    if (!activeTrack || !activeBox) return
     e.stopPropagation()
     e.preventDefault()
-    selectLabel(l.id)
-    pushHistory() // one history entry per drag gesture
+    pushHistory()
     const rect = frameRef.current!.getBoundingClientRect()
     dragRef.current = {
-      id: l.id,
-      grabDx: e.clientX - rect.left - l.x * dw,
-      grabDy: e.clientY - rect.top - l.y * dh,
+      mode: 'move',
+      grabDx: e.clientX - rect.left - activeBox.cxD,
+      grabDy: e.clientY - rect.top - activeBox.cyD,
+      startNx: activeBox.cxD / dw,
+      startNy: activeBox.cyD / dh,
     }
     ;(e.target as Element).setPointerCapture(e.pointerId)
   }
 
-  function onLabelPointerMove(e: ReactPointerEvent) {
-    const d = dragRef.current
-    if (!d) return
+  function onScaleDown(e: ReactPointerEvent) {
+    if (!activeTrack || !activeBox) return
+    e.stopPropagation()
+    e.preventDefault()
+    pushHistory()
     const rect = frameRef.current!.getBoundingClientRect()
-    const cxD = e.clientX - rect.left - d.grabDx
-    const cyD = e.clientY - rect.top - d.grabDy
-    updateLabel(d.id, { x: clamp(cxD / dw, 0, 1), y: clamp(cyD / dh, 0, 1) })
+    const dx = e.clientX - rect.left - activeBox.cxD
+    const dy = e.clientY - rect.top - activeBox.cyD
+    dragRef.current = {
+      mode: 'scale',
+      startDist: Math.hypot(dx, dy) || 1,
+      startFontSize: activeTrack.fontSize,
+    }
+    ;(e.target as Element).setPointerCapture(e.pointerId)
   }
 
-  function onLabelPointerUp(e: ReactPointerEvent) {
+  function onRotateDown(e: ReactPointerEvent) {
+    if (!activeTrack || !activeBox) return
+    e.stopPropagation()
+    e.preventDefault()
+    pushHistory()
+    dragRef.current = { mode: 'rotate' }
+    ;(e.target as Element).setPointerCapture(e.pointerId)
+  }
+
+  function onHandleMove(e: ReactPointerEvent) {
+    const d = dragRef.current
+    if (!d || !activeTrack || !activeBox) return
+    const rect = frameRef.current!.getBoundingClientRect()
+    const px = e.clientX - rect.left
+    const py = e.clientY - rect.top
+    if (d.mode === 'move') {
+      const nx = clamp((px - d.grabDx) / dw, 0, 1)
+      const ny = clamp((py - d.grabDy) / dh, 0, 1)
+      const patch: Record<string, unknown> = {}
+      // Only the axis that actually moved switches to custom placement.
+      if (Math.abs(nx - d.startNx) > MOVE_EPS) {
+        patch.positionX = 'custom'
+        patch.customX = nx
+      }
+      if (Math.abs(ny - d.startNy) > MOVE_EPS) {
+        patch.position = 'custom'
+        patch.customY = ny
+      }
+      if (Object.keys(patch).length) updateTrack(activeTrack.id, patch)
+    } else if (d.mode === 'scale') {
+      const dist = Math.hypot(px - activeBox.cxD, py - activeBox.cyD)
+      updateTrack(activeTrack.id, { fontSize: Math.round(d.startFontSize * (dist / d.startDist)) })
+    } else if (d.mode === 'rotate') {
+      const ang = (Math.atan2(py - activeBox.cyD, px - activeBox.cxD) * 180) / Math.PI
+      updateTrack(activeTrack.id, { rotation: Math.round(ang + 90) })
+    }
+  }
+
+  function onHandleUp(e: ReactPointerEvent) {
     if (!dragRef.current) return
     ;(e.target as Element).releasePointerCapture?.(e.pointerId)
     dragRef.current = null
+  }
+
+  function onSelectTrackDown(e: ReactPointerEvent, trackId: string) {
+    e.stopPropagation()
+    e.preventDefault()
+    selectTrack(trackId)
   }
 
   return (
@@ -270,12 +345,7 @@ export function PreviewCanvas() {
         className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black"
       >
         {dw > 0 && dh > 0 && (
-          <div
-            ref={frameRef}
-            className="relative"
-            style={{ width: dw, height: dh }}
-            onPointerDown={() => selectLabel(null)}
-          >
+          <div ref={frameRef} className="relative" style={{ width: dw, height: dh }}>
             <video
               ref={videoRef}
               src={videoUrl}
@@ -290,33 +360,63 @@ export function PreviewCanvas() {
               ref={canvasRef}
               className="pointer-events-none absolute inset-0 h-full w-full"
             />
-            {labels.map((l) => {
-              const r = labelRect(l)
-              const selected = l.id === selectedLabelId
-              return (
+            {/* Clickable card for each non-active track's current cue. */}
+            {boxes
+              .filter((b) => b.trackId !== activeTrackId)
+              .map((b) => (
                 <div
-                  key={l.id}
-                  role="button"
-                  aria-label={`文字標籤：${l.text}`}
-                  onPointerDown={(e) => onLabelPointerDown(e, l)}
-                  onPointerMove={onLabelPointerMove}
-                  onPointerUp={onLabelPointerUp}
-                  className={cn(
-                    'absolute cursor-move rounded-sm',
-                    selected
-                      ? 'ring-2 ring-sky-400'
-                      : 'ring-1 ring-transparent hover:ring-sky-400/40',
-                  )}
+                  key={b.trackId}
+                  className="absolute cursor-pointer rounded-sm ring-1 ring-transparent hover:ring-sky-400/60"
                   style={{
-                    left: r.left,
-                    top: r.top,
-                    width: r.width,
-                    height: r.height,
+                    left: b.cxD - b.wD / 2,
+                    top: b.cyD - b.hD / 2,
+                    width: b.wD,
+                    height: b.hD,
+                    transform: `rotate(${b.rotation}deg)`,
+                    transformOrigin: 'center',
                     touchAction: 'none',
                   }}
+                  onPointerDown={(e) => onSelectTrackDown(e, b.trackId)}
                 />
-              )
-            })}
+              ))}
+            {activeBox && (
+              <div
+                className="absolute"
+                style={{
+                  left: activeBox.cxD - activeBox.wD / 2,
+                  top: activeBox.cyD - activeBox.hD / 2,
+                  width: activeBox.wD,
+                  height: activeBox.hD,
+                  transform: `rotate(${activeBox.rotation}deg)`,
+                  transformOrigin: 'center',
+                }}
+              >
+                <div
+                  className="absolute inset-0 cursor-move ring-2 ring-sky-400"
+                  style={{ touchAction: 'none' }}
+                  onPointerDown={onMoveDown}
+                  onPointerMove={onHandleMove}
+                  onPointerUp={onHandleUp}
+                />
+                {/* scale handle (bottom-right corner) */}
+                <div
+                  className="absolute -bottom-1.5 -right-1.5 h-3 w-3 cursor-nwse-resize rounded-full border border-white bg-sky-400"
+                  style={{ touchAction: 'none' }}
+                  onPointerDown={onScaleDown}
+                  onPointerMove={onHandleMove}
+                  onPointerUp={onHandleUp}
+                />
+                {/* rotate handle (above top edge) */}
+                <div
+                  className="absolute -top-7 left-1/2 h-3 w-3 -translate-x-1/2 cursor-grab rounded-full border border-white bg-emerald-400"
+                  style={{ touchAction: 'none' }}
+                  onPointerDown={onRotateDown}
+                  onPointerMove={onHandleMove}
+                  onPointerUp={onHandleUp}
+                />
+                <div className="pointer-events-none absolute -top-7 left-1/2 h-7 w-px -translate-x-1/2 bg-emerald-400/60" />
+              </div>
+            )}
           </div>
         )}
       </div>

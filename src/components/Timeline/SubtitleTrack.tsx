@@ -1,20 +1,23 @@
 import { useEditor } from '@/store/editor'
-import type { Subtitle } from '@/types'
+import type { Track } from '@/types'
 import { clamp } from '@/lib/utils'
 import { SubtitleBlock } from './SubtitleBlock'
 
 export function SubtitleTrack({
-  subtitles,
+  track,
   pxPerSec,
   duration,
+  active,
 }: {
-  subtitles: Subtitle[]
+  track: Track
   pxPerSec: number
   duration: number
+  active: boolean
 }) {
-  const selectedId = useEditor((s) => s.selectedSubtitleId)
+  const selectedId = useEditor((s) => s.selectedCueId)
   const setCurrentTime = useEditor((s) => s.setCurrentTime)
-  const selectSubtitle = useEditor((s) => s.selectSubtitle)
+  const selectCue = useEditor((s) => s.selectCue)
+  const selectTrack = useEditor((s) => s.selectTrack)
 
   function onBgPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (e.target !== e.currentTarget) return
@@ -22,21 +25,28 @@ export function SubtitleTrack({
     const x = e.clientX - rect.left
     const t = clamp(x / pxPerSec, 0, duration)
     setCurrentTime(t)
-    selectSubtitle(null)
+    selectTrack(track.id)
+    selectCue(null)
   }
 
   return (
-    <div
-      className="relative h-full bg-zinc-950/40"
-      onPointerDown={onBgPointerDown}
-    >
-      {subtitles.map((s) => (
+    <div className="relative h-full bg-zinc-950/40" onPointerDown={onBgPointerDown}>
+      <span
+        className={
+          'pointer-events-none absolute left-1 top-1 z-20 rounded px-1 text-[10px] ' +
+          (active ? 'bg-sky-500/30 text-sky-100' : 'bg-zinc-800/70 text-zinc-400')
+        }
+      >
+        {track.name}
+      </span>
+      {track.cues.map((c) => (
         <SubtitleBlock
-          key={s.id}
-          subtitle={s}
+          key={c.id}
+          trackId={track.id}
+          subtitle={c}
           pxPerSec={pxPerSec}
           duration={duration}
-          selected={selectedId === s.id}
+          selected={selectedId === c.id}
         />
       ))}
     </div>

@@ -5,7 +5,7 @@ import { parseSubtitles } from '@/lib/srt'
 import { Section } from './ui/Field'
 
 export function SubtitleImporter() {
-  const setSubtitles = useEditor((s) => s.setSubtitles)
+  const setActiveTrackCues = useEditor((s) => s.setActiveTrackCues)
   const inputRef = useRef<HTMLInputElement>(null)
   const [status, setStatus] = useState<string | null>(null)
 
@@ -18,7 +18,7 @@ export function SubtitleImporter() {
         setStatus('沒有解析到字幕')
         return
       }
-      setSubtitles(cues)
+      setActiveTrackCues(cues)
       setStatus(`已載入 ${cues.length} 條字幕`)
     } catch (e) {
       setStatus(e instanceof Error ? e.message : '解析失敗')
