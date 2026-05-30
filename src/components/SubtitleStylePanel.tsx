@@ -95,11 +95,10 @@ export function SubtitleStylePanel() {
                 {t.name} <span className="text-zinc-500">({t.cues.length})</span>
               </button>
               <button
-                className="shrink-0 text-zinc-500 hover:text-red-400 disabled:opacity-30"
+                className="shrink-0 text-zinc-500 hover:text-red-400"
                 onClick={() => removeTrack(t.id)}
-                disabled={tracks.length <= 1}
                 aria-label="刪除軌道"
-                title={tracks.length <= 1 ? '至少保留一軌' : '刪除軌道'}
+                title="刪除軌道"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>

@@ -54,6 +54,8 @@ interface EditorState {
   tracks: Track[]
   activeTrackId: string | null
   selectedCueId: string | null
+  /** Track lane currently hovered as a drop target while dragging a cue (transient UI). */
+  dropTargetTrackId: string | null
   watermark: Watermark
   exportProgress: number | null
   hasUnsupportedBrowser: boolean
@@ -75,7 +77,9 @@ interface EditorState {
   updateCue: (trackId: string, cueId: string, patch: Partial<Subtitle>) => void
   removeCue: (trackId: string, cueId: string) => void
   setActiveTrackCues: (cues: Subtitle[]) => void
+  moveCueToTrack: (fromTrackId: string, toTrackId: string, cueId: string) => void
   selectCue: (id: string | null) => void
+  setDropTarget: (id: string | null) => void
 
   setStyle: (patch: Partial<SubtitleStyle>) => void
   setWatermark: (patch: Partial<Watermark>) => void
@@ -108,6 +112,7 @@ export const useEditor = create<EditorState>()(
     tracks: [],
     activeTrackId: null,
     selectedCueId: null,
+    dropTargetTrackId: null,
     watermark: DEFAULT_WATERMARK,
     exportProgress: null,
     hasUnsupportedBrowser:
@@ -253,7 +258,31 @@ export const useEditor = create<EditorState>()(
       }))
     },
 
+    // Reassign a cue to another track, keeping its current timing and resolving
+    // overlap within the destination. History is pushed by the drag start.
+    moveCueToTrack: (fromTrackId, toTrackId, cueId) => {
+      if (fromTrackId === toTrackId) return
+      set((s) => {
+        const from = s.tracks.find((t) => t.id === fromTrackId)
+        const cue = from?.cues.find((c) => c.id === cueId)
+        if (!cue) return {}
+        const duration = s.videoMeta?.duration ?? Number.POSITIVE_INFINITY
+        return {
+          tracks: s.tracks.map((t) => {
+            if (t.id === fromTrackId) return { ...t, cues: t.cues.filter((c) => c.id !== cueId) }
+            if (t.id === toTrackId) {
+              return { ...t, cues: resolveOverlap([...t.cues, cue], cueId, duration) }
+            }
+            return t
+          }),
+          activeTrackId: toTrackId,
+        }
+      })
+    },
+
     selectCue: (id) => set({ selectedCueId: id }),
+
+    setDropTarget: (id) => set({ dropTargetTrackId: id }),
 
     setStyle: (patch) => {
       const id = get().activeTrackId
