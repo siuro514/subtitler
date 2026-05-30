@@ -3,18 +3,21 @@ import { Plus, Trash2, ZoomIn, ZoomOut } from 'lucide-react'
 import { useEditor } from '@/store/editor'
 import { TimeRuler } from './TimeRuler'
 import { SubtitleTrack } from './SubtitleTrack'
-import { formatTime, clamp } from '@/lib/utils'
+import { formatTime, clamp, cn } from '@/lib/utils'
 
 const MIN_PX_PER_SEC = 20
 const MAX_PX_PER_SEC = 400
+const LANE_H = 64
 
 export function Timeline() {
   const meta = useEditor((s) => s.videoMeta)
   const currentTime = useEditor((s) => s.currentTime)
-  const subtitles = useEditor((s) => s.subtitles)
-  const addSubtitle = useEditor((s) => s.addSubtitle)
-  const removeSubtitle = useEditor((s) => s.removeSubtitle)
-  const selectedId = useEditor((s) => s.selectedSubtitleId)
+  const tracks = useEditor((s) => s.tracks)
+  const activeTrackId = useEditor((s) => s.activeTrackId)
+  const addCue = useEditor((s) => s.addCue)
+  const removeCue = useEditor((s) => s.removeCue)
+  const addTrack = useEditor((s) => s.addTrack)
+  const selectedCueId = useEditor((s) => s.selectedCueId)
   const [pxPerSec, setPxPerSec] = useState(100)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -43,11 +46,16 @@ export function Timeline() {
         })
         return
       }
-      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
-      if (delta !== 0) {
+      if (e.shiftKey) {
         e.preventDefault()
-        el.scrollLeft += delta
+        el.scrollLeft += e.deltaY || e.deltaX
+        return
       }
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault()
+        el.scrollLeft += e.deltaX
+      }
+      // otherwise let the browser scroll lanes vertically
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
@@ -62,11 +70,13 @@ export function Timeline() {
     if (!meta) return
     const dur = Math.min(2, meta.duration - currentTime)
     if (dur <= 0.1) return
-    addSubtitle(currentTime, currentTime + dur, '新字幕')
+    addCue(currentTime, currentTime + dur, '新字幕')
   }
 
   function removeSelected() {
-    if (selectedId) removeSubtitle(selectedId)
+    if (!selectedCueId) return
+    const tr = tracks.find((t) => t.cues.some((c) => c.id === selectedCueId))
+    if (tr) removeCue(tr.id, selectedCueId)
   }
 
   function zoom(delta: number) {
@@ -84,8 +94,14 @@ export function Timeline() {
             <Plus className="h-3 w-3" /> 新增字幕
           </button>
           <button
+            className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-zinc-800"
+            onClick={() => addTrack()}
+          >
+            <Plus className="h-3 w-3" /> 新增軌道
+          </button>
+          <button
             className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs disabled:opacity-30 hover:bg-zinc-800"
-            disabled={!selectedId}
+            disabled={!selectedCueId}
             onClick={removeSelected}
           >
             <Trash2 className="h-3 w-3" /> 刪除
@@ -111,11 +127,27 @@ export function Timeline() {
         </div>
       </div>
 
-      <div ref={scrollRef} className="relative flex-1 overflow-x-auto overflow-y-hidden">
-        <div ref={innerRef} className="relative" style={{ width: totalWidth, height: '100%' }}>
+      <div ref={scrollRef} className="relative flex-1 overflow-auto">
+        <div ref={innerRef} className="relative" style={{ width: totalWidth }}>
           <TimeRuler duration={meta.duration} pxPerSec={pxPerSec} />
-          <div className="absolute left-0 right-0 top-7 bottom-0">
-            <SubtitleTrack subtitles={subtitles} pxPerSec={pxPerSec} duration={meta.duration} />
+          <div>
+            {tracks.map((track) => (
+              <div
+                key={track.id}
+                className={cn(
+                  'relative border-b border-border/40',
+                  track.id === activeTrackId && 'bg-sky-500/[0.04]',
+                )}
+                style={{ height: LANE_H }}
+              >
+                <SubtitleTrack
+                  track={track}
+                  pxPerSec={pxPerSec}
+                  duration={meta.duration}
+                  active={track.id === activeTrackId}
+                />
+              </div>
+            ))}
           </div>
           <div
             className="pointer-events-none absolute top-0 bottom-0 z-30 w-0.5 bg-red-500"

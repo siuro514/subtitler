@@ -80,8 +80,7 @@ export async function clearSnapshot() {
 
 export function startAutosave() {
   return useEditor.subscribe(
-    (s) =>
-      [s.videoBlob, s.videoMeta, s.subtitles, s.style, s.watermark, s.customFonts, s.labels] as const,
+    (s) => [s.videoBlob, s.videoMeta, s.tracks, s.watermark, s.customFonts] as const,
     () => {
       const st = useEditor.getState()
       if (!st.videoBlob) return

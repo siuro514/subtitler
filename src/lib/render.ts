@@ -1,4 +1,4 @@
-import type { Subtitle, SubtitleStyle, TextLabel, TextStyleCore, Watermark } from '@/types'
+import type { Subtitle, SubtitleStyle, TextStyleCore, Track, Watermark } from '@/types'
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
@@ -6,16 +6,14 @@ export interface RenderInputs {
   width: number
   height: number
   time: number
-  subtitles: Subtitle[]
-  style: SubtitleStyle
+  tracks: Track[]
   watermark: Watermark
   watermarkImage: HTMLImageElement | ImageBitmap | null
-  labels: TextLabel[]
 }
 
-function findActive(subs: Subtitle[], t: number): Subtitle | null {
-  for (const s of subs) {
-    if (t >= s.start && t < s.end) return s
+function findActive(cues: Subtitle[], t: number): Subtitle | null {
+  for (const c of cues) {
+    if (t >= c.start && t < c.end) return c
   }
   return null
 }
@@ -80,10 +78,12 @@ interface PaintTextOpts {
   align: 'left' | 'center' | 'right'
   maxWidth: number
   scale: number
+  /** Clockwise rotation in degrees, around the text block center. */
+  rotation?: number
   style: TextStyleCore
 }
 
-/** Shared text painter used by both subtitles and free-floating labels. */
+/** Shared text painter used by every track (subtitles and label-like cues). */
 function paintText(ctx: Ctx, o: PaintTextOpts) {
   const { style, scale } = o
   const fontSize = style.fontSize * scale
@@ -102,9 +102,21 @@ function paintText(ctx: Ctx, o: PaintTextOpts) {
   const x = o.cx
   ctx.textAlign = textAlign
 
+  let maxLineW = 0
+  for (const l of lines) maxLineW = Math.max(maxLineW, ctx.measureText(l).width)
+
+  // Rotate around the block's visual center.
+  const rot = ((o.rotation ?? 0) * Math.PI) / 180
+  if (rot) {
+    const pivotX =
+      textAlign === 'left' ? x + maxLineW / 2 : textAlign === 'right' ? x - maxLineW / 2 : x
+    ctx.translate(pivotX, cy)
+    ctx.rotate(rot)
+    ctx.translate(-pivotX, -cy)
+  }
+
   if (style.background) {
-    const widths = lines.map((l) => ctx.measureText(l).width)
-    const boxW = Math.max(...widths) + padX * 2
+    const boxW = maxLineW + padX * 2
     const boxH = blockH + padY * 2
     let boxX: number
     if (textAlign === 'left') boxX = x - padX
@@ -173,71 +185,80 @@ function paintText(ctx: Ctx, o: PaintTextOpts) {
   ctx.restore()
 }
 
-export function drawSubtitle(ctx: Ctx, input: RenderInputs) {
-  const sub = findActive(input.subtitles, input.time)
-  if (!sub || !sub.text.trim()) return
+export interface TrackAnchor {
+  /** Horizontal anchor in canvas px (its meaning depends on align). */
+  cx: number
+  /** Vertical block center in canvas px. */
+  cy: number
+  align: 'left' | 'center' | 'right'
+  maxWidth: number
+}
 
-  const { width, height, style } = input
-  const scale = Math.min(width, height) / 720
-  const cy = subtitleY(height, style)
+/** Resolve a track's placement into canvas-space anchor + wrap width. */
+export function trackAnchor(track: SubtitleStyle, width: number, height: number): TrackAnchor {
+  const cy = subtitleY(height, track)
   const marginX = width * 0.05
-
   let align: 'left' | 'center' | 'right' = 'center'
-  let x = width / 2
-  switch (style.positionX) {
+  let cx = width / 2
+  switch (track.positionX) {
     case 'left':
       align = 'left'
-      x = marginX
+      cx = marginX
       break
     case 'right':
       align = 'right'
-      x = width - marginX
+      cx = width - marginX
       break
     case 'custom':
       align = 'center'
-      x = width * style.customX
+      cx = width * track.customX
       break
     default:
       align = 'center'
-      x = width / 2
+      cx = width / 2
   }
-
-  paintText(ctx, { text: sub.text, cx: x, cy, align, maxWidth: width * 0.9, scale, style })
+  // Freely-placed (custom) tracks behave like labels: wrap only on explicit \n.
+  const maxWidth = track.position === 'custom' || track.positionX === 'custom' ? Infinity : width * 0.9
+  return { cx, cy, align, maxWidth }
 }
 
-export function drawLabels(ctx: Ctx, input: RenderInputs) {
-  const { width, height, labels } = input
-  if (!labels?.length) return
-  const scale = Math.min(width, height) / 720
-  for (const label of labels) {
-    if (!label.text.trim()) continue
+export function drawTracks(ctx: Ctx, input: RenderInputs) {
+  const { width, height, tracks, time } = input
+  const renderScale = Math.min(width, height) / 720
+  for (const track of tracks) {
+    const cue = findActive(track.cues, time)
+    if (!cue || !cue.text.trim()) continue
+    const { cx, cy, align, maxWidth } = trackAnchor(track, width, height)
     paintText(ctx, {
-      text: label.text,
-      cx: label.x * width,
-      cy: label.y * height,
-      align: 'center',
-      maxWidth: Infinity,
-      scale,
-      style: label,
+      text: cue.text,
+      cx,
+      cy,
+      align,
+      maxWidth,
+      scale: renderScale,
+      rotation: track.rotation,
+      style: track,
     })
   }
 }
 
 /**
- * Bounding box of a label's text block in canvas pixels, used to position the
- * draggable hit target in the preview overlay. Mirrors paintText's metrics.
+ * Bounding box (pre-rotation) of a track cue's text block in canvas pixels,
+ * used to position the draggable hit target in the preview overlay. Mirrors
+ * paintText's metrics, including the track's scale.
  */
-export function measureLabelBox(
+export function measureTrackBox(
   ctx: Ctx,
-  label: TextLabel,
+  track: Track,
+  text: string,
   width: number,
   height: number,
 ): { w: number; h: number } {
-  const scale = Math.min(width, height) / 720
-  const fontSize = label.fontSize * scale
+  const fontSize = track.fontSize * (Math.min(width, height) / 720)
+  const { maxWidth } = trackAnchor(track, width, height)
   ctx.save()
-  setFont(ctx, label, fontSize)
-  const lines = wrapLines(ctx, label.text || ' ', Infinity)
+  setFont(ctx, track, fontSize)
+  const lines = wrapLines(ctx, text || ' ', maxWidth)
   let maxW = 0
   for (const l of lines) maxW = Math.max(maxW, ctx.measureText(l || ' ').width)
   ctx.restore()
@@ -385,8 +406,7 @@ function drawVinyl(
 export function renderFrame(ctx: Ctx, input: RenderInputs, clear = true) {
   if (clear) ctx.clearRect(0, 0, input.width, input.height)
   drawWatermark(ctx, input)
-  drawSubtitle(ctx, input)
-  drawLabels(ctx, input)
+  drawTracks(ctx, input)
 }
 
 export function loadWatermarkImage(dataUrl: string | null): Promise<HTMLImageElement | null> {

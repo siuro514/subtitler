@@ -2,7 +2,24 @@ import { useRef, useState } from 'react'
 import { Download, Upload } from 'lucide-react'
 import { useEditor } from '@/store/editor'
 import { parseSettings, serializeSettings } from '@/lib/settings'
+import { DEFAULT_STYLE, type SubtitleStyle, type Track } from '@/types'
 import { Section } from './ui/Field'
+
+/** Extract just the SubtitleStyle fields from a track (drop id/name/cues/scale/rotation). */
+function trackToStyle(t: Track): SubtitleStyle {
+  const {
+    fontFamily, fontSize, color, strokeColor, strokeWidth,
+    background, backgroundColor, backgroundOpacity, backgroundRadius,
+    position, customY, positionX, customX,
+    bold, italic, underline, strikethrough,
+  } = t
+  return {
+    fontFamily, fontSize, color, strokeColor, strokeWidth,
+    background, backgroundColor, backgroundOpacity, backgroundRadius,
+    position, customY, positionX, customX,
+    bold, italic, underline, strikethrough,
+  }
+}
 
 function downloadText(content: string, filename: string) {
   const blob = new Blob([content], { type: 'application/json' })
@@ -17,13 +34,17 @@ function downloadText(content: string, filename: string) {
 }
 
 export function SettingsIO() {
-  const style = useEditor((s) => s.style)
+  const tracks = useEditor((s) => s.tracks)
+  const activeTrackId = useEditor((s) => s.activeTrackId)
   const watermark = useEditor((s) => s.watermark)
   const applySettings = useEditor((s) => s.applySettings)
   const inputRef = useRef<HTMLInputElement>(null)
   const [status, setStatus] = useState<string | null>(null)
 
+  const active = tracks.find((t) => t.id === activeTrackId) ?? null
+
   function exportSettings() {
+    const style = active ? trackToStyle(active) : DEFAULT_STYLE
     downloadText(serializeSettings(style, watermark), 'subtitler-settings.json')
     setStatus('已匯出設定檔')
   }
@@ -66,7 +87,7 @@ export function SettingsIO() {
           e.target.value = ''
         }}
       />
-      <p className="text-[10px] text-zinc-500">匯出字幕樣式與浮水印設定（不含影片與字幕內容）。</p>
+      <p className="text-[10px] text-zinc-500">匯出作用中軌的字幕樣式與浮水印（不含影片與字幕內容），匯入則套用到作用中軌。</p>
       {status && <p className="text-xs text-zinc-400">{status}</p>}
     </Section>
   )

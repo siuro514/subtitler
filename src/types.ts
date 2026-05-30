@@ -32,13 +32,17 @@ export interface SubtitleStyle extends TextStyleCore {
   customX: number
 }
 
-/** A text label placed at an arbitrary position, shown for the whole video. */
-export interface TextLabel extends TextStyleCore {
+/**
+ * A subtitle/lyric track. Owns its style and on-screen placement (position,
+ * scale, rotation); its cues share that placement and differ only in time/text.
+ * A "label" is just a track with a single always-on, freely-positioned cue.
+ */
+export interface Track extends SubtitleStyle {
   id: string
-  text: string
-  /** Normalized [0,1] center position relative to the video frame. */
-  x: number
-  y: number
+  name: string
+  cues: Subtitle[]
+  /** Clockwise rotation of the text block in degrees. */
+  rotation: number
 }
 
 export interface Watermark {
@@ -81,11 +85,9 @@ export interface CustomFont {
 export interface ProjectSnapshot {
   videoBlob: Blob | null
   videoMeta: VideoMeta | null
-  subtitles: Subtitle[]
-  style: SubtitleStyle
+  tracks: Track[]
   watermark: Watermark
   customFonts: CustomFont[]
-  labels: TextLabel[]
 }
 
 export const DEFAULT_STYLE: SubtitleStyle = {
@@ -108,21 +110,10 @@ export const DEFAULT_STYLE: SubtitleStyle = {
   strikethrough: false,
 }
 
-export const DEFAULT_LABEL_STYLE: TextStyleCore = {
-  fontFamily: 'sans-serif',
-  fontSize: 48,
-  color: '#ffffff',
-  strokeColor: '#000000',
-  strokeWidth: 4,
-  background: false,
-  backgroundColor: '#000000',
-  backgroundOpacity: 0.5,
-  backgroundRadius: 0,
-  bold: true,
-  italic: false,
-  underline: false,
-  strikethrough: false,
-}
+/** Default placement extras for a new track (on top of DEFAULT_STYLE). */
+export const DEFAULT_TRACK_EXTRAS = {
+  rotation: 0,
+} as const
 
 export const DEFAULT_WATERMARK: Watermark = {
   imageDataUrl: null,

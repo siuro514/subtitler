@@ -26,7 +26,7 @@ const LANGS = [
 export function LyricsAligner() {
   const videoBlob = useEditor((s) => s.videoBlob)
   const videoMeta = useEditor((s) => s.videoMeta)
-  const setSubtitles = useEditor((s) => s.setSubtitles)
+  const setActiveTrackCues = useEditor((s) => s.setActiveTrackCues)
   const [lyrics, setLyrics] = useState('')
   const [lang, setLang] = useState('zh')
   const [open, setOpen] = useState(false)
@@ -82,7 +82,7 @@ export function LyricsAligner() {
         words,
         totalDuration,
       )
-      setSubtitles(subtitles)
+      setActiveTrackCues(subtitles)
 
       setStage('done')
       setProgress(1)

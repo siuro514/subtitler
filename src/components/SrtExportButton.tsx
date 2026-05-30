@@ -15,14 +15,17 @@ function downloadText(content: string, filename: string) {
 }
 
 export function SrtExportButton() {
-  const subtitles = useEditor((s) => s.subtitles)
+  const tracks = useEditor((s) => s.tracks)
+  const activeTrackId = useEditor((s) => s.activeTrackId)
   const meta = useEditor((s) => s.videoMeta)
-  const disabled = subtitles.length === 0
+  const active = tracks.find((t) => t.id === activeTrackId) ?? null
+  const cues = active?.cues ?? []
+  const disabled = cues.length === 0
 
   function exportSrt() {
     if (disabled) return
     const base = (meta?.name ?? 'subtitles').replace(/\.[^.]+$/, '')
-    downloadText(serializeSrt(subtitles), `${base}.srt`)
+    downloadText(serializeSrt(cues), `${base}.srt`)
   }
 
   return (

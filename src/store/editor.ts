@@ -1,14 +1,15 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import {
-  DEFAULT_LABEL_STYLE,
   DEFAULT_STYLE,
+  DEFAULT_TRACK_EXTRAS,
   DEFAULT_WATERMARK,
   type CustomFont,
   type ProjectSnapshot,
   type Subtitle,
   type SubtitleStyle,
-  type TextLabel,
+  type TextStyleCore,
+  type Track,
   type VideoMeta,
   type Watermark,
 } from '@/types'
@@ -17,14 +18,32 @@ import { registerCustomFont } from '@/lib/fonts'
 import { resolveOverlap } from '@/lib/overlap'
 
 interface HistoryEntry {
-  subtitles: Subtitle[]
-  style: SubtitleStyle
+  tracks: Track[]
   watermark: Watermark
   customFonts: CustomFont[]
-  labels: TextLabel[]
 }
 
 const MAX_HISTORY = 50
+
+/** Pre multi-track snapshot shape, accepted by hydrate for migration. */
+type LegacyLabel = TextStyleCore & { id: string; text: string; x: number; y: number }
+type StoredProject = Omit<ProjectSnapshot, 'tracks'> & {
+  tracks?: Track[]
+  subtitles?: Subtitle[]
+  style?: Partial<SubtitleStyle>
+  labels?: LegacyLabel[]
+}
+
+export function makeTrack(patch: Partial<Track> = {}): Track {
+  return {
+    ...DEFAULT_STYLE,
+    ...DEFAULT_TRACK_EXTRAS,
+    id: uid(),
+    name: '軌道',
+    cues: [],
+    ...patch,
+  }
+}
 
 interface EditorState {
   videoBlob: Blob | null
@@ -32,15 +51,13 @@ interface EditorState {
   videoMeta: VideoMeta | null
   currentTime: number
   isPlaying: boolean
-  selectedSubtitleId: string | null
-  subtitles: Subtitle[]
-  style: SubtitleStyle
+  tracks: Track[]
+  activeTrackId: string | null
+  selectedCueId: string | null
   watermark: Watermark
   exportProgress: number | null
   hasUnsupportedBrowser: boolean
   customFonts: CustomFont[]
-  labels: TextLabel[]
-  selectedLabelId: string | null
   past: HistoryEntry[]
   future: HistoryEntry[]
 
@@ -48,42 +65,37 @@ interface EditorState {
   clearVideo: () => void
   setCurrentTime: (t: number) => void
   setPlaying: (p: boolean) => void
-  setSubtitles: (subs: Subtitle[]) => void
-  addSubtitle: (start: number, end: number, text?: string) => string
-  updateSubtitle: (id: string, patch: Partial<Subtitle>) => void
-  removeSubtitle: (id: string) => void
-  selectSubtitle: (id: string | null) => void
+
+  addTrack: () => string
+  removeTrack: (id: string) => void
+  updateTrack: (id: string, patch: Partial<Track>) => void
+  selectTrack: (id: string | null) => void
+
+  addCue: (start: number, end: number, text?: string) => string
+  updateCue: (trackId: string, cueId: string, patch: Partial<Subtitle>) => void
+  removeCue: (trackId: string, cueId: string) => void
+  setActiveTrackCues: (cues: Subtitle[]) => void
+  selectCue: (id: string | null) => void
+
   setStyle: (patch: Partial<SubtitleStyle>) => void
   setWatermark: (patch: Partial<Watermark>) => void
   applySettings: (patch: { style?: Partial<SubtitleStyle>; watermark?: Partial<Watermark> }) => void
-  addLabel: (x?: number, y?: number, text?: string) => string
-  updateLabel: (id: string, patch: Partial<TextLabel>) => void
-  removeLabel: (id: string) => void
-  selectLabel: (id: string | null) => void
   setExportProgress: (p: number | null) => void
   addCustomFont: (family: string, data: ArrayBuffer) => Promise<void>
   removeCustomFont: (id: string) => void
   pushHistory: () => void
   undo: () => void
   redo: () => void
-  hydrate: (snap: ProjectSnapshot) => Promise<void>
+  hydrate: (snap: StoredProject) => Promise<void>
   toSnapshot: () => ProjectSnapshot
 }
 
 function snapshotHistory(s: {
-  subtitles: Subtitle[]
-  style: SubtitleStyle
+  tracks: Track[]
   watermark: Watermark
   customFonts: CustomFont[]
-  labels: TextLabel[]
 }): HistoryEntry {
-  return {
-    subtitles: s.subtitles,
-    style: s.style,
-    watermark: s.watermark,
-    customFonts: s.customFonts,
-    labels: s.labels,
-  }
+  return { tracks: s.tracks, watermark: s.watermark, customFonts: s.customFonts }
 }
 
 export const useEditor = create<EditorState>()(
@@ -93,16 +105,14 @@ export const useEditor = create<EditorState>()(
     videoMeta: null,
     currentTime: 0,
     isPlaying: false,
-    selectedSubtitleId: null,
-    subtitles: [],
-    style: DEFAULT_STYLE,
+    tracks: [],
+    activeTrackId: null,
+    selectedCueId: null,
     watermark: DEFAULT_WATERMARK,
     exportProgress: null,
     hasUnsupportedBrowser:
       typeof window !== 'undefined' && !('VideoEncoder' in window),
     customFonts: [],
-    labels: [],
-    selectedLabelId: null,
     past: [],
     future: [],
 
@@ -110,7 +120,20 @@ export const useEditor = create<EditorState>()(
       const prev = get().videoUrl
       if (prev) URL.revokeObjectURL(prev)
       const url = URL.createObjectURL(blob)
-      set({ videoBlob: blob, videoMeta: meta, videoUrl: url, currentTime: 0, isPlaying: false })
+      set((s) => {
+        const base = {
+          videoBlob: blob,
+          videoMeta: meta,
+          videoUrl: url,
+          currentTime: 0,
+          isPlaying: false,
+        }
+        if (s.tracks.length === 0) {
+          const t = makeTrack({ name: '字幕' })
+          return { ...base, tracks: [t], activeTrackId: t.id }
+        }
+        return base
+      })
     },
 
     clearVideo: () => {
@@ -122,69 +145,120 @@ export const useEditor = create<EditorState>()(
         videoMeta: null,
         currentTime: 0,
         isPlaying: false,
-        subtitles: [],
-        selectedSubtitleId: null,
-        labels: [],
-        selectedLabelId: null,
+        tracks: [],
+        activeTrackId: null,
+        selectedCueId: null,
       })
     },
 
     setCurrentTime: (t) => set({ currentTime: t }),
     setPlaying: (p) => set({ isPlaying: p }),
 
-    setSubtitles: (subs) => {
+    addTrack: () => {
       get().pushHistory()
-      set({
-        subtitles: [...subs].sort((a, b) => a.start - b.start),
-        selectedSubtitleId: null,
+      const t = makeTrack({ name: `軌道 ${get().tracks.length + 1}` })
+      set((s) => ({ tracks: [...s.tracks, t], activeTrackId: t.id }))
+      return t.id
+    },
+
+    removeTrack: (id) => {
+      get().pushHistory()
+      set((s) => {
+        const tracks = s.tracks.filter((t) => t.id !== id)
+        return {
+          tracks,
+          activeTrackId: s.activeTrackId === id ? (tracks[0]?.id ?? null) : s.activeTrackId,
+          selectedCueId: null,
+        }
       })
     },
 
-    addSubtitle: (start, end, text = '') => {
-      get().pushHistory()
+    // No history push: used for live edits (sliders, canvas drag/scale/rotate).
+    // Callers snapshot once on interaction start.
+    updateTrack: (id, patch) =>
+      set((s) => ({
+        tracks: s.tracks.map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                ...patch,
+                customY: clamp(patch.customY ?? t.customY, 0, 1),
+                customX: clamp(patch.customX ?? t.customX, 0, 1),
+                fontSize: clamp(patch.fontSize ?? t.fontSize, 4, 400),
+              }
+            : t,
+        ),
+      })),
+
+    selectTrack: (id) => set({ activeTrackId: id }),
+
+    addCue: (start, end, text = '') => {
+      let activeId = get().activeTrackId
+      if (!activeId || !get().tracks.some((t) => t.id === activeId)) {
+        activeId = get().addTrack()
+      } else {
+        get().pushHistory()
+      }
       const id = uid()
-      const sub: Subtitle = { id, start, end, text }
+      const cue: Subtitle = { id, start, end, text }
       set((s) => {
-        const list = [...s.subtitles, sub]
         const duration = s.videoMeta?.duration ?? Number.POSITIVE_INFINITY
         return {
-          subtitles: resolveOverlap(list, id, duration),
-          selectedSubtitleId: id,
+          tracks: s.tracks.map((t) =>
+            t.id === activeId
+              ? { ...t, cues: resolveOverlap([...t.cues, cue], id, duration) }
+              : t,
+          ),
+          selectedCueId: id,
         }
       })
       return id
     },
 
-    updateSubtitle: (id, patch) =>
-      set((s) => {
-        const updated = s.subtitles.map((x) => (x.id === id ? { ...x, ...patch } : x))
-        const timingChanged = 'start' in patch || 'end' in patch
-        if (!timingChanged) {
-          return { subtitles: updated.sort((a, b) => a.start - b.start) }
-        }
-        const duration = s.videoMeta?.duration ?? Number.POSITIVE_INFINITY
-        return { subtitles: resolveOverlap(updated, id, duration) }
-      }),
+    updateCue: (trackId, cueId, patch) =>
+      set((s) => ({
+        tracks: s.tracks.map((t) => {
+          if (t.id !== trackId) return t
+          const updated = t.cues.map((c) => (c.id === cueId ? { ...c, ...patch } : c))
+          const timingChanged = 'start' in patch || 'end' in patch
+          if (!timingChanged) {
+            return { ...t, cues: updated.sort((a, b) => a.start - b.start) }
+          }
+          const duration = s.videoMeta?.duration ?? Number.POSITIVE_INFINITY
+          return { ...t, cues: resolveOverlap(updated, cueId, duration) }
+        }),
+      })),
 
-    removeSubtitle: (id) => {
+    removeCue: (trackId, cueId) => {
       get().pushHistory()
       set((s) => ({
-        subtitles: s.subtitles.filter((x) => x.id !== id),
-        selectedSubtitleId: s.selectedSubtitleId === id ? null : s.selectedSubtitleId,
+        tracks: s.tracks.map((t) =>
+          t.id === trackId ? { ...t, cues: t.cues.filter((c) => c.id !== cueId) } : t,
+        ),
+        selectedCueId: s.selectedCueId === cueId ? null : s.selectedCueId,
       }))
     },
 
-    selectSubtitle: (id) => set({ selectedSubtitleId: id }),
-
-    setStyle: (patch) =>
+    setActiveTrackCues: (cues) => {
+      let activeId = get().activeTrackId
+      if (!activeId || !get().tracks.some((t) => t.id === activeId)) {
+        activeId = get().addTrack()
+      } else {
+        get().pushHistory()
+      }
+      const sorted = [...cues].sort((a, b) => a.start - b.start)
       set((s) => ({
-        style: {
-          ...s.style,
-          ...patch,
-          customY: clamp(patch.customY ?? s.style.customY, 0, 1),
-          customX: clamp(patch.customX ?? s.style.customX, 0, 1),
-        },
-      })),
+        tracks: s.tracks.map((t) => (t.id === activeId ? { ...t, cues: sorted } : t)),
+        selectedCueId: null,
+      }))
+    },
+
+    selectCue: (id) => set({ selectedCueId: id }),
+
+    setStyle: (patch) => {
+      const id = get().activeTrackId
+      if (id) get().updateTrack(id, patch)
+    },
 
     setWatermark: (patch) => set((s) => ({ watermark: { ...s.watermark, ...patch } })),
 
@@ -192,45 +266,23 @@ export const useEditor = create<EditorState>()(
       if (!patch.style && !patch.watermark) return
       get().pushHistory()
       set((s) => {
-        const style = patch.style
-          ? {
-              ...s.style,
-              ...patch.style,
-              customY: clamp(patch.style.customY ?? s.style.customY, 0, 1),
-              customX: clamp(patch.style.customX ?? s.style.customX, 0, 1),
-            }
-          : s.style
-        const watermark = patch.watermark
-          ? { ...s.watermark, ...patch.watermark }
-          : s.watermark
-        return { style, watermark }
+        const tracks =
+          patch.style && s.activeTrackId
+            ? s.tracks.map((t) =>
+                t.id === s.activeTrackId
+                  ? {
+                      ...t,
+                      ...patch.style,
+                      customY: clamp(patch.style!.customY ?? t.customY, 0, 1),
+                      customX: clamp(patch.style!.customX ?? t.customX, 0, 1),
+                    }
+                  : t,
+              )
+            : s.tracks
+        const watermark = patch.watermark ? { ...s.watermark, ...patch.watermark } : s.watermark
+        return { tracks, watermark }
       })
     },
-
-    addLabel: (x = 0.5, y = 0.5, text = '文字') => {
-      get().pushHistory()
-      const id = uid()
-      const label: TextLabel = { ...DEFAULT_LABEL_STYLE, id, text, x, y }
-      set((s) => ({ labels: [...s.labels, label], selectedLabelId: id }))
-      return id
-    },
-
-    // No history push here: drag emits many updates per gesture. Callers that
-    // start a discrete edit (drag start, style change) push history themselves.
-    updateLabel: (id, patch) =>
-      set((s) => ({
-        labels: s.labels.map((l) => (l.id === id ? { ...l, ...patch } : l)),
-      })),
-
-    removeLabel: (id) => {
-      get().pushHistory()
-      set((s) => ({
-        labels: s.labels.filter((l) => l.id !== id),
-        selectedLabelId: s.selectedLabelId === id ? null : s.selectedLabelId,
-      }))
-    },
-
-    selectLabel: (id) => set({ selectedLabelId: id }),
 
     pushHistory: () => {
       const s = get()
@@ -282,23 +334,52 @@ export const useEditor = create<EditorState>()(
     hydrate: async (snap) => {
       if (snap.videoBlob && snap.videoMeta) {
         const url = URL.createObjectURL(snap.videoBlob)
-        set({
-          videoBlob: snap.videoBlob,
-          videoMeta: snap.videoMeta,
-          videoUrl: url,
-        })
+        set({ videoBlob: snap.videoBlob, videoMeta: snap.videoMeta, videoUrl: url })
       }
       const fonts = snap.customFonts ?? []
       await Promise.allSettled(
         fonts.map((f) => registerCustomFont(f.family, f.data.slice(0))),
       )
+
+      const duration = snap.videoMeta?.duration ?? 0
+      let tracks: Track[]
+      if (snap.tracks) {
+        // Backfill missing fields, and fold the removed per-track `scale` into
+        // fontSize so projects saved with the old scale control look the same.
+        tracks = snap.tracks.map((t) => {
+          const { scale, ...rest } = t as Track & { scale?: number }
+          const merged = { ...makeTrack(), ...rest }
+          if (scale && scale !== 1) merged.fontSize = Math.round(merged.fontSize * scale)
+          return merged
+        })
+      } else {
+        // Migrate legacy single-track + labels project.
+        tracks = []
+        if ((snap.subtitles && snap.subtitles.length > 0) || snap.style) {
+          tracks.push(makeTrack({ ...snap.style, name: '字幕', cues: snap.subtitles ?? [] }))
+        }
+        for (const l of snap.labels ?? []) {
+          const { id: _id, text, x, y, ...core } = l
+          tracks.push(
+            makeTrack({
+              ...core,
+              name: text.slice(0, 8) || '標籤',
+              position: 'custom',
+              customY: y,
+              positionX: 'custom',
+              customX: x,
+              cues: [{ id: uid(), start: 0, end: duration, text }],
+            }),
+          )
+        }
+      }
+
       set({
-        subtitles: snap.subtitles ?? [],
-        style: { ...DEFAULT_STYLE, ...snap.style },
+        tracks,
+        activeTrackId: tracks[0]?.id ?? null,
+        selectedCueId: null,
         watermark: { ...DEFAULT_WATERMARK, ...snap.watermark },
         customFonts: fonts,
-        labels: snap.labels ?? [],
-        selectedLabelId: null,
       })
     },
 
@@ -307,19 +388,17 @@ export const useEditor = create<EditorState>()(
       return {
         videoBlob: s.videoBlob,
         videoMeta: s.videoMeta,
-        subtitles: s.subtitles,
-        style: s.style,
+        tracks: s.tracks,
         watermark: s.watermark,
         customFonts: s.customFonts,
-        labels: s.labels,
       }
     },
   })),
 )
 
-export function activeSubtitle(subs: Subtitle[], t: number): Subtitle | null {
-  for (const s of subs) {
-    if (t >= s.start && t < s.end) return s
+export function activeCue(cues: Subtitle[], t: number): Subtitle | null {
+  for (const c of cues) {
+    if (t >= c.start && t < c.end) return c
   }
   return null
 }

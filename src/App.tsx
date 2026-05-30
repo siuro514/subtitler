@@ -6,7 +6,6 @@ import { PreviewCanvas } from './components/PreviewCanvas'
 import { SubtitleStylePanel } from './components/SubtitleStylePanel'
 import { SubtitleImporter } from './components/SubtitleImporter'
 import { WatermarkPanel } from './components/WatermarkPanel'
-import { LabelsPanel } from './components/LabelsPanel'
 import { SettingsIO } from './components/SettingsIO'
 import { Timeline } from './components/Timeline/Timeline'
 import { ExportButton } from './components/ExportButton'
@@ -24,7 +23,7 @@ export function App() {
   const videoUrl = useEditor((s) => s.videoUrl)
   const meta = useEditor((s) => s.videoMeta)
   const clearVideo = useEditor((s) => s.clearVideo)
-  const setSubtitles = useEditor((s) => s.setSubtitles)
+  const setActiveTrackCues = useEditor((s) => s.setActiveTrackCues)
   const setWatermark = useEditor((s) => s.setWatermark)
   const hydrate = useEditor((s) => s.hydrate)
   const undo = useEditor((s) => s.undo)
@@ -109,7 +108,7 @@ export function App() {
               className="rounded-md border border-border px-3 py-1 text-xs hover:bg-zinc-800"
               onClick={() => {
                 if (!meta) return
-                setSubtitles(makeDemoSubtitles(meta.duration))
+                setActiveTrackCues(makeDemoSubtitles(meta.duration))
                 setWatermark({ imageDataUrl: DEMO_WATERMARK_DATA_URL })
               }}
             >
@@ -143,7 +142,6 @@ export function App() {
               <LyricsAligner />
               <SubtitleStylePanel />
               <WatermarkPanel />
-              <LabelsPanel />
               <SettingsIO />
             </aside>
             <div className="flex min-w-0 flex-1 flex-col">
